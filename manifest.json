@@ -1,0 +1,52 @@
+{
+    "manifest_version":  2,
+    "name":  "Nextcloud Talk Direkt",
+    "version":  "2.0.0",
+    "description":  "Direkte Erstellung einer Nextcloud Talk Unterhaltung \u00fcber den Termin-Dialog.",
+    "developer":  {
+                     "name":  "Bastian Kleinschmidt"
+                 },
+    "homepage_url":  "https://paypal.me/debaschdi",
+    "browser_specific_settings":  {
+                         "gecko":  {
+                                       "id":  "nctalk-direct-esr140@example.com",
+                                       "strict_min_version":  "140.0",
+                                       "strict_max_version":  "144.*"
+                                   }
+                     },
+    "permissions":  [
+                        "storage",
+                        "*://*/ocs/*",
+                        "*://*/remote.php/*"
+                    ],
+    "background":  {
+                       "scripts":  [
+                                       "background.js"
+                                   ]
+                   },
+    "options_ui":  {
+                       "page":  "options.html",
+                       "browser_style":  true,
+                       "open_in_tab":  true
+                   },
+    "experiment_apis":  {
+                            "calToolbar":  {
+                                               "schema":  "experiments/calToolbar/schema.json",
+                                               "parent":  {
+                                                              "scopes":  [
+                                                                             "addon_parent"
+                                                                         ],
+                                                              "paths":  [
+                                                                            [
+                                                                                "calToolbar"
+                                                                            ]
+                                                                        ],
+                                                              "script":  "experiments/calToolbar/parent.js"
+                                                          }
+                                           }
+                        },
+    "icons":  {
+                  "48":  "icons/talk-48.png",
+                  "96":  "icons/talk-96.png"
+              }
+}

@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Nextcloud Talk - Einstellungen</title>
+<style>
+body{font:14px system-ui, sans-serif; max-width:720px; margin:20px auto; line-height:1.45;}
+.row{display:grid; grid-template-columns: 180px 1fr; gap:10px; align-items:center; margin:8px 0;}
+input[type="url"], input[type="text"], input[type="password"]{padding:8px; border:1px solid #ccc; border-radius:6px;}
+footer{display:flex; gap:8px; margin-top:16px}
+#status{opacity:.8; font-size:12px}
+.donation{display:flex; flex-direction:column; gap:6px;}
+.donation-link{display:inline-flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid #e0e0e0; border-radius:8px; text-decoration:none; color:inherit; background:#fafafa;}
+.donation-link:hover{background:#f0f7ff; border-color:#b7d7ff;}
+.donation-link img{width:24px; height:24px;}
+</style>
+<h1>Nextcloud Talk - Einstellungen</h1>
+<div class="row"><label>Nextcloud URL</label><input id="baseUrl" type="url" placeholder="https://cloud.example.com"></div>
+<div class="row"><label>Benutzername</label><input id="user" type="text"></div>
+<div class="row"><label>App-Passwort</label><input id="appPass" type="password"></div>
+<div class="row">
+  <label>Unterst&uuml;tzen</label>
+  <div class="donation">
+    <a class="donation-link" href="https://paypal.me/debaschdi" target="_blank" rel="noopener">
+      <img src="icons/paypal.svg" alt="">
+      <span>PayPal: paypal.me/debaschdi</span>
+    </a>
+  </div>
+</div>
+<footer>
+  <button id="save">Speichern</button>
+  <span id="status"></span>
+</footer>
+<script src="options.js"></script>
+
