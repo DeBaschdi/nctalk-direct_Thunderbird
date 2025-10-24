@@ -1,8 +1,9 @@
 {
     "manifest_version":  2,
-    "name":  "Nextcloud Talk Direkt",
-    "version":  "2.0.0",
-    "description":  "Direkte Erstellung einer Nextcloud Talk Unterhaltung \u00fcber den Termin-Dialog.",
+    "default_locale":  "de",
+    "name":  "__MSG_extName__",
+    "version":  "2.0.1",
+    "description":  "__MSG_extDescription__",
     "developer":  {
                      "name":  "Bastian Kleinschmidt"
                  },

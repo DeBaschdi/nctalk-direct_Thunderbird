@@ -1,6 +1,6 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>Nextcloud Talk - Einstellungen</title>
+<title data-i18n="options_title">Nextcloud Talk - Einstellungen</title>
 <style>
 body{font:14px system-ui, sans-serif; max-width:720px; margin:20px auto; line-height:1.45;}
 .row{display:grid; grid-template-columns: 180px 1fr; gap:10px; align-items:center; margin:8px 0;}
@@ -12,22 +12,32 @@ footer{display:flex; gap:8px; margin-top:16px}
 .donation-link:hover{background:#f0f7ff; border-color:#b7d7ff;}
 .donation-link img{width:24px; height:24px;}
 </style>
-<h1>Nextcloud Talk - Einstellungen</h1>
-<div class="row"><label>Nextcloud URL</label><input id="baseUrl" type="url" placeholder="https://cloud.example.com"></div>
-<div class="row"><label>Benutzername</label><input id="user" type="text"></div>
-<div class="row"><label>App-Passwort</label><input id="appPass" type="password"></div>
+<h1 data-i18n="options_heading">Nextcloud Talk - Einstellungen</h1>
+<div class="row"><label for="baseUrl" data-i18n="options_base_url_label">Nextcloud URL</label><input id="baseUrl" type="url" data-i18n-placeholder="options_base_url_placeholder" placeholder="https://cloud.example.com"></div>
+<div class="row"><label for="user" data-i18n="options_user_label">Benutzername</label><input id="user" type="text"></div>
+<div class="row"><label for="appPass" data-i18n="options_app_pass_label">App-Passwort</label><input id="appPass" type="password"></div>
 <div class="row">
-  <label>Unterst&uuml;tzen</label>
+  <label data-i18n="options_debug_label">Debug-Logging</label>
+  <label style="display:flex; align-items:center; gap:6px;">
+    <input id="debugEnabled" type="checkbox">
+    <span data-i18n="options_debug_hint">Konsole f&uuml;r Diagnosemeldungen verwenden</span>
+  </label>
+</div>
+<div class="row">
+  <label></label>
+  <button id="testConnection" type="button" data-i18n="options_test_button">Verbindung testen</button>
+</div>
+<div class="row">
+  <label data-i18n="options_support_label">Unterst&uuml;tzen</label>
   <div class="donation">
     <a class="donation-link" href="https://paypal.me/debaschdi" target="_blank" rel="noopener">
       <img src="icons/paypal.svg" alt="">
-      <span>PayPal: paypal.me/debaschdi</span>
+      <span data-i18n="options_support_link">PayPal: paypal.me/debaschdi</span>
     </a>
   </div>
 </div>
 <footer>
-  <button id="save">Speichern</button>
+  <button id="save" data-i18n="options_save_button">Speichern</button>
   <span id="status"></span>
 </footer>
 <script src="options.js"></script>
-

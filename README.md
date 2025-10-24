@@ -1,55 +1,87 @@
-# Nextcloud Talk Direkt – Entwicklerdokumentation
+# Nextcloud Talk Direkt - Entwicklerleitfaden
 
-Diese Variante integriert einen Direkt-Button in den Thunderbird-Termin-Dialog,
-der ohne Zwischenschritt eine neue öffentliche Nextcloud-Talk-Unterhaltung anlegt.
+<p align="center">
+  <img src="screenshot.jpg" alt="Screenshot: Nextcloud Talk Direkt Optionen" width="720">
+</p>
+
+Diese Variante des Nextcloud-Talk-Add-ons erweitert den Thunderbird-Termin-Dialog
+um einen Direkt-Button, der ohne Umwege eine neue oeffentliche Unterhaltung anlegt
+und den Link automatisch in das Ereignis eintraegt.
 
 ## Verzeichnisstruktur
 
-```
-Nextcloud Talk 2.0.0/
-├── background.js         # Hintergrundlogik: API-Aufrufe & Utilities
-├── experiments/
-│   └── calToolbar/
-│       ├── parent.js     # Frontendcode, der den Button und den Dialog steuert
-│       └── schema.json   # Experiment-API-Definition
-├── icons/                # Add-on- und Spenden-Icons
-├── manifest.json         # Add-on-Metadaten (Manifest v2)
-├── options.html/.js      # Einstellungsseite für URL/Benutzer/App-Passwort
-└── README.md             # Diese Datei
-```
+Nextcloud Talk 2.0.1/
+|- background.js          # Hintergrundlogik: REST-Calls, Adressbuch, Utilities
+|- experiments/
+|  |- calToolbar/
+|  |  |- parent.js        # Frontend/Experiment, Dialog & Button
+|  |  |- schema.json      # Experiment-API-Beschreibung
+|- icons/                 # Add-on-Icons (verschiedene Groessen)
+|- manifest.json          # Manifest v2 + browser_specific_settings
+|- options.html/.js       # Einstellungsdialog fuer URL/Benutzer/App-Passwort
+|- README.md              # Diese Datei
 
-## Abläufe
+## Wichtige Ablaeufe
 
-1. **Toolbar-Injektion** (`parent.js::inject`): Der Button wird in den Termin-Dialog eingefügt.
-   Ein Klick ruft `openCreateDialog` auf.
-2. **Dialog** (`openCreateDialog`): Fragt Titel/Passwort/Lobby/Moderator ab, führt API-Aufrufe
-   über das Hintergrundskript aus und fügt den Talk-Link in den Termin ein.
-3. **Hintergrundskript** (`background.js`): Übernimmt sämtliche REST-Aufrufe
-   (Talk API sowie CardDAV-Systemadressbuch) und kapselt sie hinter sicheren Helfern.
-4. **Lobby-Watcher** (`setupLobbyWatcher`): Beobachtet Terminänderungen und synchronisiert die
-   Lobby-Startzeit, sobald der Termin gespeichert wurde.
+1. **Toolbar-Injektion** (`parent.js::inject`): fuegt den Button in Termin- und Aufgaben-Dialoge
+   ein. Alle Event-Listener werden zentral ueber `handle(...)` registriert.
+2. **Erstellen-Dialog** (`openCreateDialog`): steuert die UI fuer Titel, Passwort, Lobby-Optionen
+   sowie Moderator-Auswahl und delegiert alle Netzwerk-Operationen an das Hintergrundskript.
+3. **Hintergrundskript** (`background.js`):
+   - Talk-REST-Aufrufe (`/ocs/v2.php/apps/spreed/...`)
+   - CardDAV-Lookups (`remote.php/dav/...`) des Nextcloud-Systemadressbuchs
+   - Avatar-Verarbeitung (Pixel-Extraktion + Serialisierung fuer das Frontend)
+4. **Lobby-Watcher** (`setupLobbyWatcher`): beobachtet Termin-Aenderungen und synchronisiert die
+   Lobby-Startzeit nach dem Speichern. Berechtigungsfehler werden abgefangen und sichtbar gemacht.
 
 ## Berechtigungen
 
-- `storage`: Speichert URL, Benutzername und App-Passwort in der Add-on-Konfiguration.
-- `*://*/ocs/*`: Notwendig für sämtliche Talk-REST-Endpunkte (`/ocs/v2.php/apps/spreed/...`).
-- `*://*/remote.php/*`: Wird ausschließlich verwendet, um das vom Server bereitgestellte
-  Systemadressbuch (`remote.php/dav/...`) auszulesen. Der entsprechende Code ist in
-  `background.js` dokumentiert.
+- `storage`: persistiert Basis-URL, Benutzername und App-Passwort.
+- Host-Permissions `*://*/ocs/*` und `*://*/remote.php/*`: notwendig fuer Talk- und CardDAV-Aufrufe.
+  Weitere Domains werden nicht angesprochen.
+- Keine Content-Skripte; alle Requests laufen ueber `fetch` im Hintergrundskript.
 
-Weitere Host-Permissions sind nicht erforderlich; WebDAV/CalDAV-Anfragen laufen über die
-Thunderbird-eigene Infrastruktur.
+## Sicherheit & Robustheit
 
-## Sicherheit / Hardening
+- Jeder Netzwerk-Request wird in `try/catch` gefasst und mit aussagekraeftigen Fehlermeldungen
+  quittiert. 403-Antworten koennen z.B. die Lobby-Option deaktivieren.
+- Systemadressbuch-Ergebnisse werden fuer 5 Minuten gecacht (`SYSTEM_ADDRESSBOOK_TTL`). Danach
+  wird neu beim Server angefragt.
+- Avatar-Daten werden nur als Plain-Array weitergereicht (kein ArrayBuffer erforderlich), womit
+  Structured-Clone-Probleme in Thunderbird vermieden werden.
 
-- Alle Netzwerkfehler werden abgefangen und führen zu klaren UI-Meldungen.
-- 403-Antworten bei Lobby-Änderungen resultieren in einer deaktivierten Lobby-Checkbox,
-  sodass keine wiederholten Fehler auftreten.
-- Das Systemadressbuch wird gecacht (`SYSTEM_ADDRESSBOOK_TTL`), um API-Traffic zu minimieren.
-- Für Textverarbeitung (Beschreibung, vCard) werden Escapes entfernt und Eingaben normalisiert.
+## Aenderungen in Version 2.0.1
 
-## Tests und Validierung
+- **Event-Konversationen**: Optionaler Modus koppelt den Talk-Raum an den Termin (`objectType:event`,
+  `objectId`). Bei fehlender Server-Unterstuetzung faellt das Add-on automatisch auf den bisherigen
+  Standard-Raum zurueck.
+- **Avatar-Pipeline**: Hintergrund liefert Pixelarrays ohne TypedArray-Abhaengigkeiten; Frontend
+  zeichnet Avatare robust inklusive Fallback auf Initialen.
+- **Moderator-Vorschau**: Ausgewaehlter Moderator erscheint unterhalb des Eingabefelds mit Avatar
+  (oder Initialen) und Name/E-Mail.
+- **Dialog-Refit & Debug-Schalter**: Aufgeraeumte UI, erweiterte Statusmeldungen sowie
+  zuschaltbares Debug-Logging in den Add-on-Optionen.
+- **Debug-Initialisierung**: Experiment referenziert browser.storage erst nach API-Kontext; verhindert
+  Startfehler "browser is not defined" im Experiment.
+- **Lobby-Setup**: Lobby-Endpoint nutzt wieder `PUT` (Nextcloud Webinar API); Standard-Raeume mit Lobby erzeugen keinen 405-Fallback mehr.
+- **Beschreibung**: Event-Konversationen blockieren `PUT /description` (HTTP 400); Update erfolgt nur fuer Standard-Raeume.
+- **Capabilities**: Fallback auf `/ocs/v2.php/cloud/capabilities` inklusive Versionspruefung (<32 -> Event-Modus deaktiviert).  Debug-Logs zeigen, welche Quelle (Talk/Cloud) den Support liefert.
+- **Mehrsprachige UI**: Dialoge und Optionen in Deutsch/Englisch/Franzoesisch via browser.i18n.
+- **Erweitertes Debug-Logging**: Hintergrund (`[NCBG]`) protokolliert alle Kernaktionen inklusive gekuerzter Token/IDs; das Experiment-Frontend (`[NCExp]`) loggt Dialog-Workflows, Listenabrufe und Pending-Delegationen.
+- **Verbindungs-Test in den Optionen**: Button "Verbindung testen" prueft Basis-URL, Benutzername und App-Passwort direkt per `/ocs/v2.php/cloud/capabilities` und meldet Erfolg bzw. Fehler mit klarer Statusanzeige.
 
-- Add-on lässt sich in Thunderbird 140.* bis 144.* testen (siehe `strict_min_version`/`max_version`).
-- ATN-Hinweise zu Manifest/Icons wurden beseitigt (`browser_specific_settings`, korrekte Icon-Größen).
-- Bitte nach jeder Codeänderung das XPI neu packen (`tar -a -cf …`) und per `about:debugging` laden.
+## Tests & Validierung
+
+- Entwicklung derzeit gegen Thunderbird 140.* bis 144.* (siehe Manifest).
+- XPI-Build (PowerShell):
+  ```powershell
+  # im Verzeichnis "Nextcloud Talk 2.0.1/"
+  powershell -File ..\build-xpi.ps1 -SourceDir "." -Destination "..\nctalk-direct-2.0.1.xpi"
+  ```
+- Installation zum Testen ueber `about:debugging#/runtime/this-thunderbird`.
+- Nach jedem Build Konsolenmeldungen pruefen (Filter `[NCBG]`, `[NCExp]` fuer REST/Lobby/Delegation).
+
+
+
+
+

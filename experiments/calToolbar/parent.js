@@ -62,34 +62,9 @@ function ensureBrowserGlobals(){
       if (typeof globalThis.URL === "undefined" && hidden.URL){
         globalThis.URL = hidden.URL;
       }
-    }
-  }catch(e){
-    err(e);
-  }
-  try{
-    if (typeof globalThis.atob !== "function" && typeof ChromeUtils?.base64URLDecode === "function"){
-      globalThis.atob = function(input){
-        const clean = String(input ?? "").replace(/[\r\n\s]/g, "");
-        const normalized = clean.replace(/\+/g, "-").replace(/\//g, "_");
-        const bytes = ChromeUtils.base64URLDecode(normalized, { padding: "ignore" });
-        let binary = "";
-        for (const b of bytes){
-          binary += String.fromCharCode(b);
-        }
-        return binary;
-      };
-    }
-    if (typeof globalThis.btoa !== "function" && typeof ChromeUtils?.base64URLEncode === "function"){
-      globalThis.btoa = function(input){
-        const str = String(input ?? "");
-        const len = str.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++){
-          bytes[i] = str.charCodeAt(i) & 0xff;
-        }
-        const encoded = ChromeUtils.base64URLEncode(bytes, { pad: true });
-        return encoded.replace(/-/g, "+").replace(/_/g, "/");
-      };
+      if (typeof globalThis.createImageBitmap !== "function" && typeof hidden.createImageBitmap === "function"){
+        globalThis.createImageBitmap = hidden.createImageBitmap.bind(hidden);
+      }
     }
   }catch(e){
     err(e);
@@ -98,10 +73,769 @@ function ensureBrowserGlobals(){
 
 ensureBrowserGlobals();
 
-const ADDON_TITLE = "Nextcloud Talk";
+const ALERT_TITLE_FALLBACK = "Nextcloud Talk";
 let LAST_CONTEXT = null;
 
-function log(...a){ try { console.log("[NCExp]", ...a); } catch(_) {} }
+const AVATAR_BITMAP_CACHE = new Map();
+
+function shortToken(token, keepStart = 4, keepEnd = 3){
+  if (!token) return "";
+  const str = String(token);
+  if (str.length <= keepStart + keepEnd + 3){
+    return str;
+  }
+  return str.slice(0, keepStart) + "..." + str.slice(str.length - keepEnd);
+}
+
+function shortString(value, max = 20){
+  if (value == null) return "";
+  const str = String(value);
+  if (str.length <= max){
+    return str;
+  }
+  return str.slice(0, max) + "...";
+}
+
+function describeCreatePayload(payload){
+  if (!payload || typeof payload !== "object") return {};
+  return {
+    title: payload.title || "",
+    enableLobby: !!payload.enableLobby,
+    enableListable: !!payload.enableListable,
+    hasPassword: !!payload.password,
+    descriptionLength: payload.description ? String(payload.description).length : 0,
+    startTimestamp: typeof payload.startTimestamp === "number" ? payload.startTimestamp : null,
+    eventConversation: !!payload.eventConversation,
+    objectType: payload.objectType || null,
+    objectId: payload.objectId ? shortString(payload.objectId, 12) : null
+  };
+}
+
+function summarizeUtilityPayload(payload){
+  if (!payload || typeof payload !== "object") return {};
+  return {
+    type: payload.type || "",
+    token: payload.token ? shortToken(payload.token) : "",
+    searchTerm: payload.searchTerm || "",
+    limit: typeof payload.limit === "number" ? payload.limit : undefined,
+    delegate: payload.newModerator || ""
+  };
+}
+
+const I18N_FALLBACKS = {
+  ui_button_ok: "OK",
+  ui_button_cancel: "Abbrechen",
+  ui_button_apply: "\u00dcbernehmen",
+  ui_button_apply_progress: "\u00dcbernehme...",
+  ui_button_create_progress: "Erstelle...",
+  ui_button_clear: "Leeren",
+  ui_insert_button_label: "Talk-Link einf\u00fcgen",
+  ui_create_heading: "\u00d6ffentliche Unterhaltung erstellen",
+  ui_create_title_label: "Titel",
+  ui_create_password_label: "Passwort (optional)",
+  ui_create_password_placeholder: "Optional",
+  ui_create_lobby_label: "Lobby bis Startzeit",
+  ui_create_listable_label: "In Suche anzeigen",
+  ui_create_roomtype_label: "Raumtyp",
+  ui_create_mode_event: "Event-Konversation (Talk Raum an Termin binden)",
+  ui_create_mode_standard: "Standard-Raum (eigenstaendig)",
+  ui_create_mode_unsupported: "Event-Konversation wird vom Server nicht unterstuetzt.",
+  ui_create_moderator_label: "Moderator (optional)",
+  ui_create_moderator_placeholder: "Benutzername eingeben",
+  ui_create_moderator_hint: "Bei Angabe wird die Moderation nach Erstellung an diesen Benutzer uebertragen und Sie verlassen den Raum.",
+  ui_delegate_selected_title: "Ausgewaehlt",
+  ui_delegate_status_searching: "Suche...",
+  ui_delegate_status_loading: "Lade Benutzer...",
+  ui_delegate_status_none_with_email: "Keine Treffer mit E-Mail.",
+  ui_delegate_status_none_found: "Keine Benutzer mit E-Mail gefunden.",
+  ui_delegate_status_single: "1 Treffer mit E-Mail.",
+  ui_delegate_status_many: "$1 Treffer mit E-Mail.",
+  ui_delegate_status_error: "Benutzersuche fehlgeschlagen.",
+  ui_create_password_short: "Das Passwort muss mindestens 5 Zeichen lang sein.",
+  ui_create_send_failed: "Senden an Hintergrundskript fehlgeschlagen:\n$1",
+  ui_create_no_handler: "Kein Nextcloud Talk Handler registriert. Bitte Add-on neu laden.",
+  ui_create_unknown_error: "Unbekannter Fehler beim Erstellen der Unterhaltung.",
+  ui_create_failed: "Nextcloud Talk konnte nicht erstellt werden:\n$1\nBitte Optionen pruefen.",
+  ui_moderator_transfer_failed: "Moderator konnte nicht uebertragen werden.",
+  ui_moderator_transfer_failed_with_reason: "Moderator konnte nicht uebertragen werden:\n$1",
+  ui_alert_title: "Nextcloud Talk",
+  ui_alert_link_inserted: "Talk-Link eingefuegt:\n$1",
+  ui_alert_location_missing: "(Hinweis: Feld 'Ort' wurde nicht automatisch gefunden.)",
+  ui_alert_event_fallback: "Hinweis: Server unterstuetzt Event-Konversationen nicht. Es wurde ein Standard-Raum erstellt.",
+  ui_alert_generic_fallback: "(Hinweis: Es wurde ein Fallback-Link ohne API erzeugt.)",
+  ui_alert_reason: "Grund: $1",
+  ui_alert_pending_delegation: "Moderator wird beim Speichern/Senden uebertragen an: $1.",
+  ui_alert_delegation_done: "Moderator uebertragen an: $1.",
+  ui_alert_delegation_removed: "Sie wurden aus der Unterhaltung entfernt.",
+  ui_alert_password_protected: "Hinweis: Diese Unterhaltung ist passwortgeschuetzt.",
+  ui_alert_lobby_state_active: "Lobby ist aktiv.",
+  ui_alert_lobby_state_inactive: "Lobby ist deaktiviert.",
+  ui_alert_lobby_no_rights: "(Hinweis: Keine Lobby-Rechte, Zustand unveraendert.)",
+  ui_select_heading: "\u00d6ffentliche Unterhaltung auswaehlen",
+  ui_select_search_placeholder: "Suche",
+  ui_select_no_selection: "Keine Unterhaltung ausgewaehlt",
+  ui_select_lobby_toggle: "Lobby einschalten (Startzeit aus Termin)",
+  ui_select_missing_base_url: "Bitte hinterlegen Sie die Nextcloud URL in den Add-on-Optionen.",
+  ui_select_status_loading: "Lade...",
+  ui_select_status_none: "Keine Unterhaltungen gefunden.",
+  ui_select_status_single: "1 Unterhaltung gefunden.",
+  ui_select_status_many: "$1 Unterhaltungen gefunden.",
+  ui_select_status_error: "Fehler: $1",
+  ui_badge_password_required: "Passwort erforderlich",
+  ui_badge_listed: "Oeffentlich gelistet",
+  ui_badge_owned: "Eigene Teilnahme",
+  ui_badge_guests_allowed: "Gaeste erlaubt",
+  ui_badge_guests_forbidden: "Keine Gaeste erlaubt",
+  ui_password_info_yes: "Passwortschutz aktiv.",
+  ui_password_info_no: "Kein Passwort gesetzt.",
+  ui_lobby_loading_details: "Lade Raumdetails...",
+  ui_lobby_disabled: "Lobby deaktiviert.",
+  ui_lobby_active_with_time: "Lobby aktiv (Start: $1)",
+  ui_lobby_active_without_time: "Lobby aktiv (keine Startzeit gesetzt).",
+  ui_lobby_fetching_status: "Lobby-Status wird ermittelt...",
+  ui_details_error: "Details konnten nicht geladen werden.",
+  ui_moderator_not_participant: "Keine Teilnahme an dieser Unterhaltung (nur Anzeige).",
+  ui_moderator_can_manage: "Sie koennen die Lobby verwalten.",
+  ui_moderator_cannot_manage: "Sie sind kein Moderator dieser Unterhaltung.",
+  ui_lobby_no_permission: "Keine Berechtigung zum Aendern der Lobby.",
+  ui_select_apply_permission_denied: "Lobby konnte nicht angepasst werden: Keine Moderatorrechte.",
+  ui_select_apply_failed: "\u00dcbernahme fehlgeschlagen:\n$1",
+  ui_select_rooms_load_failed: "\u00d6ffentliche Unterhaltungen konnten nicht geladen werden:\n$1",
+  ui_prompt_base_url: "Nextcloud Basis-URL (z.B. https://cloud.example.com):",
+  ui_prompt_title: "Titel fuer neue oeffentliche Unterhaltung:",
+  ui_default_title: "Besprechung",
+  ui_description_line_link: "\nTalk: $1",
+  ui_description_line_password: "Passwort: $1",
+  ui_toolbar_tooltip: "Nextcloud Talk",
+  error_invalid_base64_length: "Ungueltige Base64-Laenge.",
+  error_invalid_base64_data: "Ungueltige Base64-Daten.",
+  error_avatar_load_failed: "Avatar konnte nicht geladen werden.",
+  error_credentials_missing: "Nextcloud Zugang fehlt (URL/Nutzer/App-Pass).",
+  error_ocs: "OCS-Fehler: $1",
+  error_room_token_missing: "Raum-Token fehlt.",
+  error_room_details_missing: "Raumdetails fehlen im Response.",
+  error_lobby_update_failed: "Lobby-Update fehlgeschlagen (HTTP $1)."
+};
+
+function applySubstitutions(template, substitutions){
+  if (!template) return "";
+  if (!Array.isArray(substitutions) || substitutions.length === 0){
+    return template;
+  }
+  return template.replace(/\$(\d+)/g, (match, index) => {
+    const idx = Number(index) - 1;
+    return idx >= 0 && idx < substitutions.length && substitutions[idx] != null
+      ? String(substitutions[idx])
+      : "";
+  });
+}
+
+function i18n(key, substitutions = []){
+  const resolvedSubs = Array.isArray(substitutions) ? substitutions : [substitutions];
+  const ctxMessage = getLocalizedMessage(key, resolvedSubs);
+  if (ctxMessage){
+    return ctxMessage;
+  }
+  try{
+    const api = getI18nApi();
+    if (api){
+      const message = api.getMessage(key, resolvedSubs);
+      if (message){
+        return message;
+      }
+    }
+  }catch(_){}
+  const fallback = I18N_FALLBACKS[key];
+  if (fallback){
+    return applySubstitutions(fallback, resolvedSubs);
+  }
+  if (resolvedSubs.length){
+    return String(resolvedSubs[0] ?? "");
+  }
+  return "";
+}
+
+function localizedError(key, substitutions = []){
+  const message = i18n(key, substitutions);
+  return new Error(message || key);
+}
+
+let BROWSER = null;
+let DEBUG = false;
+let debugListenerRegistered = false;
+let debugInitScheduled = false;
+
+function getLocalizedMessage(key, substitutions){
+  const ctx = LAST_CONTEXT;
+  if (!ctx) return "";
+  const options = ctx.cloneScope ? { cloneScope: ctx.cloneScope } : undefined;
+  try{
+    const ext = ctx.extension;
+    if (ext?.localizeMessage){
+      const message = ext.localizeMessage(key, substitutions, options || {});
+      if (message){
+        return message;
+      }
+    }
+    const localeData = ext?.localeData;
+    if (localeData?.localizeMessage){
+      const message = localeData.localizeMessage(key, substitutions, options || {});
+      if (message){
+        return message;
+      }
+    }
+  }catch(_){}
+  try{
+    if (typeof ctx.localizeMessage === "function"){
+      const message = ctx.localizeMessage(key, substitutions, options || {});
+      if (message){
+        return message;
+      }
+    }
+  }catch(_){}
+  return "";
+}
+
+function getI18nApi(){
+  try{
+    if (typeof browser !== "undefined" && browser?.i18n){
+      return browser.i18n;
+    }
+  }catch(_){}
+  if (BROWSER?.i18n){
+    return BROWSER.i18n;
+  }
+  if (LAST_CONTEXT){
+    try{
+      const resolved = resolveBrowser(LAST_CONTEXT);
+      if (resolved?.i18n){
+        return resolved.i18n;
+      }
+    }catch(_){}
+  }
+  return null;
+}
+
+function resolveBrowser(context){
+  if (context){
+    LAST_CONTEXT = context;
+  }
+  if (BROWSER) return BROWSER;
+  if (context?.extension?.browser){
+    BROWSER = context.extension.browser;
+    return BROWSER;
+  }
+  if (context?.browser){
+    BROWSER = context.browser;
+    return BROWSER;
+  }
+  if (LAST_CONTEXT?.extension?.browser){
+    BROWSER = LAST_CONTEXT.extension.browser;
+    return BROWSER;
+  }
+  if (typeof browser !== "undefined"){
+    BROWSER = browser;
+    return BROWSER;
+  }
+  if (typeof globalThis !== "undefined" && globalThis && globalThis.browser){
+    BROWSER = globalThis.browser;
+    return BROWSER;
+  }
+  return null;
+}
+
+function ensureDebugState(context){
+  const api = resolveBrowser(context);
+  if (!api || !api.storage) return;
+  if (!debugListenerRegistered && api.storage.onChanged){
+    try{
+      api.storage.onChanged.addListener((changes, area) => {
+        if (area !== "local") return;
+        if (Object.prototype.hasOwnProperty.call(changes, "debugEnabled")){
+          DEBUG = !!changes.debugEnabled.newValue;
+        }
+      });
+      debugListenerRegistered = true;
+    }catch(_){}
+  }
+  if (debugInitScheduled) return;
+  debugInitScheduled = true;
+  try{
+    const result = api.storage.local.get("debugEnabled");
+    if (result && typeof result.then === "function"){
+      result.then((stored) => {
+        if (stored && Object.prototype.hasOwnProperty.call(stored, "debugEnabled")){
+          DEBUG = !!stored.debugEnabled;
+        }else{
+          DEBUG = false;
+        }
+      }).catch(() => {});
+    }
+  }catch(_){}
+}
+
+const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const OBJECT_TO_STRING = Object.prototype.toString;
+
+function isArrayBufferLike(value){
+  return value && typeof value === "object" && OBJECT_TO_STRING.call(value) === "[object ArrayBuffer]";
+}
+
+function isUint8ClampedArrayLike(value){
+  return value && typeof value === "object" && OBJECT_TO_STRING.call(value) === "[object Uint8ClampedArray]";
+}
+
+function toUint8ClampedArray(value){
+  if (!value) return null;
+  try{
+    if (typeof Uint8ClampedArray !== "undefined" && value instanceof Uint8ClampedArray){
+      return typeof value.slice === "function" ? value.slice() : new Uint8ClampedArray(value);
+    }
+  }catch(_){}
+  if (isUint8ClampedArrayLike(value)){
+    if (typeof value.slice === "function"){
+      try{
+        return value.slice();
+      }catch(_){}
+    }
+    try{
+      return new Uint8ClampedArray(value);
+    }catch(_){}
+  }
+  if (typeof ArrayBuffer !== "undefined" && typeof ArrayBuffer.isView === "function" && ArrayBuffer.isView(value)){
+    try{
+      return new Uint8ClampedArray(value);
+    }catch(_){}
+  }
+  if (isArrayBufferLike(value)){
+    try{
+      if (typeof value.slice === "function"){
+        return new Uint8ClampedArray(value.slice(0));
+      }
+      return new Uint8ClampedArray(value);
+    }catch(_){}
+  }
+  if (Array.isArray(value)){
+    try{
+      return new Uint8ClampedArray(value);
+    }catch(_){}
+  }
+  if (typeof value.length === "number"){
+    try{
+      return new Uint8ClampedArray(Array.from(value));
+    }catch(_){}
+  }
+  return null;
+}
+
+function manualAtob(input){
+  const cleanBase = String(input ?? "").replace(/[\r\n\s]/g, "");
+  if (!cleanBase){
+    return "";
+  }
+  const sanitized = cleanBase.replace(/-/g, "+").replace(/_/g, "/");
+  if (sanitized.length % 4 === 1){
+    throw localizedError("error_invalid_base64_length");
+  }
+  let output = "";
+  for (let i = 0; i < sanitized.length; i += 4){
+    const char1 = sanitized.charAt(i);
+    const char2 = sanitized.charAt(i + 1);
+    const char3 = sanitized.charAt(i + 2) || "=";
+    const char4 = sanitized.charAt(i + 3) || "=";
+    const enc1 = BASE64_ALPHABET.indexOf(char1);
+    const enc2 = BASE64_ALPHABET.indexOf(char2);
+    const enc3 = char3 === "=" ? 64 : BASE64_ALPHABET.indexOf(char3);
+    const enc4 = char4 === "=" ? 64 : BASE64_ALPHABET.indexOf(char4);
+    if (enc1 < 0 || enc2 < 0 || (enc3 < 0 && enc3 !== 64) || (enc4 < 0 && enc4 !== 64)){
+      throw localizedError("error_invalid_base64_data");
+    }
+    const chr1 = (enc1 << 2) | (enc2 >> 4);
+    output += String.fromCharCode(chr1 & 0xff);
+    if (enc3 !== 64){
+      const chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+      output += String.fromCharCode(chr2 & 0xff);
+    }
+    if (enc4 !== 64){
+      const chr3 = ((enc3 & 3) << 6) | enc4;
+      output += String.fromCharCode(chr3 & 0xff);
+    }
+  }
+  return output;
+}
+
+function safeAtob(input){
+  ensureBrowserGlobals();
+  if (typeof globalThis.atob === "function"){
+    return globalThis.atob(String(input ?? ""));
+  }
+  return manualAtob(input);
+}
+
+function parseDataUrl(value){
+  if (!value || typeof value !== "string") return null;
+  const match = /^data:([^;,]+)?(?:;charset=[^;,]+)?(?:;base64)?,(.*)$/i.exec(value);
+  if (!match) return null;
+  return {
+    mime: (match[1] || "").toLowerCase(),
+    base64: match[2] || ""
+  };
+}
+
+function getUrlFactory(win){
+  if (win?.URL && typeof win.URL.createObjectURL === "function"){
+    return win.URL;
+  }
+  if (typeof URL !== "undefined" && typeof URL.createObjectURL === "function"){
+    return URL;
+  }
+  const hidden = getHiddenDOMWindow();
+  if (hidden?.URL && typeof hidden.URL.createObjectURL === "function"){
+    return hidden.URL;
+  }
+  return null;
+}
+
+function getBlobConstructor(){
+  ensureBrowserGlobals();
+  if (typeof Blob === "function"){
+    return Blob;
+  }
+  if (typeof File === "function"){
+    const Wrapper = function(parts, options){
+      const opts = options && typeof options === "object" ? options : {};
+      const name = typeof opts.name === "string" && opts.name.length ? opts.name : "blob";
+      return new File(parts, name, opts);
+    };
+    return Wrapper;
+  }
+  const hidden = getHiddenDOMWindow();
+  if (hidden && typeof hidden.Blob === "function"){
+    return hidden.Blob;
+  }
+  if (hidden && typeof hidden.File === "function"){
+    const Wrapper = function(parts, options){
+      const opts = options && typeof options === "object" ? options : {};
+      const name = typeof opts.name === "string" && opts.name.length ? opts.name : "blob";
+      return new hidden.File(parts, name, opts);
+    };
+    return Wrapper;
+  }
+  return null;
+}
+
+async function decodeAvatarViaBackground(base64, mime){
+  const clean = typeof base64 === "string" ? base64.replace(/\s+/g, "") : "";
+  if (!clean){
+    return null;
+  }
+  const payload = { base64: clean, mime: mime || "image/png" };
+  if (LAST_CONTEXT){
+    try{
+      const runtimeResponse = await sendRuntimeMessage(LAST_CONTEXT, "talkMenu:decodeAvatar", payload);
+      if (runtimeResponse && runtimeResponse.ok === false){
+        log("background decode runtime error", runtimeResponse.error);
+      }
+      if (runtimeResponse && runtimeResponse.ok){
+        return runtimeResponse;
+      }
+    }catch(e){
+      err(e);
+      err("background decode via runtime failed");
+    }
+    try{
+      const utilityResponse = await requestUtility(LAST_CONTEXT, Object.assign({ type: "decodeAvatar" }, payload));
+      if (utilityResponse && utilityResponse.ok === false){
+        log("background decode utility error", utilityResponse.error);
+      }
+      if (utilityResponse && utilityResponse.ok){
+        return utilityResponse;
+      }
+    }catch(e){
+      err(e);
+      err("background decode via utility failed");
+    }
+  }
+  try{
+    const runtime = (typeof browser !== "undefined" && browser?.runtime) ||
+      (typeof globalThis !== "undefined" && globalThis.browser?.runtime) ||
+      null;
+    if (runtime?.sendMessage){
+      const directResponse = await runtime.sendMessage(Object.assign({ type: "talkMenu:decodeAvatar" }, payload));
+      if (directResponse && directResponse.ok === false){
+        log("background decode direct error", directResponse.error);
+      }
+      if (directResponse && directResponse.ok){
+        return directResponse;
+      }
+    }
+  }catch(e){
+    err(e);
+    err("background decode direct messaging failed");
+  }
+  return null;
+}
+
+async function loadAvatarImage(dataUrl, win){
+  if (!dataUrl) return null;
+  if (AVATAR_BITMAP_CACHE.has(dataUrl)){
+    return AVATAR_BITMAP_CACHE.get(dataUrl);
+  }
+  const task = (async () => {
+    const parsed = parseDataUrl(dataUrl);
+    if (!parsed || !parsed.base64){
+      return null;
+    }
+    let cachedBackgroundEntry = null;
+    const tryBackgroundDecode = async () => {
+      if (cachedBackgroundEntry) return cachedBackgroundEntry;
+      try{
+        const decoded = await decodeAvatarViaBackground(parsed.base64, parsed.mime || "image/png");
+        if (!decoded || decoded.ok === false){
+          err(decoded?.error || "background decode returned empty");
+          return null;
+        }
+        const width = decoded.width || decoded.imageWidth || 0;
+        const height = decoded.height || decoded.imageHeight || 0;
+        if (!width || !height){
+          return null;
+        }
+        const pixelCandidates = [
+          decoded.pixelData,
+          decoded.data,
+          decoded.array,
+          decoded.pixels,
+          decoded.bytes
+        ];
+        let pixels = null;
+        for (const candidate of pixelCandidates){
+          pixels = toUint8ClampedArray(candidate);
+          if (pixels){
+            break;
+          }
+        }
+        if (!pixels){
+          err("background decode produced no pixels");
+          return null;
+        }
+        cachedBackgroundEntry = {
+          width,
+          height,
+          pixelData: {
+            width,
+            height,
+            data: pixels
+          }
+        };
+        return cachedBackgroundEntry;
+      }catch(e){
+        err(e);
+        return null;
+      }
+    };
+    try{
+      const binary = safeAtob(parsed.base64);
+      const len = binary.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++){
+        bytes[i] = binary.charCodeAt(i) & 0xff;
+      }
+      const mime = parsed.mime || "image/png";
+      const BlobCtor = getBlobConstructor();
+      let blob = null;
+      if (BlobCtor){
+        blob = new BlobCtor([bytes], { type: mime });
+      }
+
+      const globalBitmapFactory = (typeof globalThis !== "undefined" && typeof globalThis.createImageBitmap === "function")
+        ? globalThis.createImageBitmap.bind(globalThis)
+        : null;
+      const hiddenWin = getHiddenDOMWindow();
+      const hiddenBitmapFactory = hiddenWin && typeof hiddenWin.createImageBitmap === "function"
+        ? hiddenWin.createImageBitmap.bind(hiddenWin)
+        : null;
+      const bitmapFactory =
+        (win && typeof win.createImageBitmap === "function" && win.createImageBitmap.bind(win)) ||
+        globalBitmapFactory ||
+        hiddenBitmapFactory;
+      if (bitmapFactory && blob){
+        try{
+          const bitmap = await bitmapFactory(blob);
+          if (bitmap){
+            return {
+              image: bitmap,
+              blob,
+              width: bitmap.width || 0,
+              height: bitmap.height || 0
+            };
+          }
+        }catch(bitmapErr){
+          err(bitmapErr);
+        }
+      }
+      if (!blob){
+        const bgEntry = await tryBackgroundDecode();
+        if (bgEntry){
+          return bgEntry;
+        }
+        return null;
+      }
+      const makeImage = () => {
+        if (win && typeof win.Image === "function"){
+          return new win.Image();
+        }
+        if (typeof Image === "function"){
+          return new Image();
+        }
+        const hidden = getHiddenDOMWindow();
+        if (hidden && typeof hidden.Image === "function"){
+          return new hidden.Image();
+        }
+        return null;
+      };
+      const img = makeImage();
+      if (!img){
+        err("Image constructor unavailable");
+        const bgEntry = await tryBackgroundDecode();
+        if (bgEntry){
+          return bgEntry;
+        }
+        return null;
+      }
+      const urlFactory = blob ? getUrlFactory(win) : null;
+      const url = blob && urlFactory ? urlFactory.createObjectURL(blob) : null;
+      if (!url){
+        const bgEntry = await tryBackgroundDecode();
+        if (bgEntry){
+          return bgEntry;
+        }
+        return null;
+      }
+      const loadPromise = new Promise((resolve, reject) => {
+        img.onload = () => resolve({
+          image: img,
+          blob,
+          width: img.naturalWidth || img.width || 0,
+          height: img.naturalHeight || img.height || 0,
+          objectUrl: url,
+          urlFactory
+        });
+        img.onerror = async (event) => {
+          try{
+            if (url && urlFactory?.revokeObjectURL){
+              try { urlFactory.revokeObjectURL(url); }catch(_){}
+            }
+            const bgEntry = await tryBackgroundDecode();
+            if (bgEntry){
+              resolve(bgEntry);
+              return;
+            }
+          }catch(errFallback){
+            err(errFallback);
+          }
+          reject(event || localizedError("error_avatar_load_failed"));
+        };
+      });
+      img.src = url;
+      const result = await loadPromise;
+      if (result.objectUrl && result.urlFactory?.revokeObjectURL){
+        try{ result.urlFactory.revokeObjectURL(result.objectUrl); }catch(_){}
+      }
+      delete result.objectUrl;
+      delete result.urlFactory;
+      return result;
+    }catch(e){
+      err(e);
+      const bgEntry = await tryBackgroundDecode();
+      if (bgEntry){
+        return bgEntry;
+      }
+      return null;
+    }
+  })();
+  AVATAR_BITMAP_CACHE.set(dataUrl, task);
+  return task;
+}
+
+async function drawAvatarOnCanvas(canvas, dataUrl){
+  if (!canvas || !dataUrl) return false;
+  try{
+    const win = canvas.ownerDocument?.defaultView || (typeof window !== "undefined" ? window : null);
+    const entry = await loadAvatarImage(dataUrl, win);
+    if (!entry){
+      err("avatar entry missing");
+      return false;
+    }
+    const ctx = canvas.getContext("2d");
+    if (!ctx){
+      err("canvas context missing");
+      return false;
+    }
+    let source = entry.image || null;
+    let width = entry.width || 0;
+    let height = entry.height || 0;
+    if (entry.pixelData){
+      width = entry.pixelData.width || width;
+      height = entry.pixelData.height || height;
+      const doc = canvas.ownerDocument || (typeof document !== "undefined" ? document : null);
+      if (!doc || typeof doc.createElement !== "function"){
+        err("no document to create temp canvas");
+        return false;
+      }
+      const tempCanvas = doc.createElement("canvas");
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+      const tempCtx = tempCanvas.getContext("2d");
+      if (!tempCtx){
+        err("temp canvas context missing");
+        return false;
+      }
+      const imageData = tempCtx.createImageData(width, height);
+      imageData.data.set(entry.pixelData.data);
+      tempCtx.putImageData(imageData, 0, 0);
+      source = tempCanvas;
+    }
+    if (!source){
+      source = entry.image;
+    }
+    if (!source){
+      err("avatar source missing");
+      return false;
+    }
+    if (!width || !height){
+      width = entry.image?.naturalWidth || entry.image?.width || 0;
+      height = entry.image?.naturalHeight || entry.image?.height || 0;
+      if (!width || !height){
+        err("avatar size missing");
+        return false;
+      }
+    }
+    const destW = canvas.width || 28;
+    const destH = canvas.height || 28;
+    ctx.clearRect(0, 0, destW, destH);
+    let sx = 0;
+    let sy = 0;
+    let sWidth = width;
+    let sHeight = height;
+    if (width > height){
+      sx = (width - height) / 2;
+      sWidth = height;
+    } else if (height > width){
+      sy = (height - width) / 2;
+      sHeight = width;
+    }
+    ctx.drawImage(source, sx, sy, sWidth, sHeight, 0, 0, destW, destH);
+    return true;
+  }catch(e){
+      err(e);
+      return false;
+  }
+}
+
+function log(...a){
+  if (!DEBUG) return;
+  try { console.log("[NCExp]", ...a); } catch(_) {}
+}
 function err(e){ log("ERROR:", e && e.message ? e.message : String(e)); }
 
 function getDocFromTarget(target){
@@ -123,12 +857,13 @@ function getDocFromTarget(target){
   return (typeof document !== "undefined") ? document : null;
 }
 
-function showAlert(target, message, title = ADDON_TITLE){
+function showAlert(target, message, title){
+  const resolvedTitle = title || i18n("ui_alert_title") || ALERT_TITLE_FALLBACK;
   const doc = getDocFromTarget(target);
   if (!doc || !doc.body){
     try{
       if (Services?.prompt){
-        Services.prompt.alert(null, title, String(message));
+        Services.prompt.alert(null, resolvedTitle, String(message));
         return;
       }
     }catch(_){}
@@ -199,7 +934,7 @@ function showAlert(target, message, title = ADDON_TITLE){
   const textBox = doc.createElement("div");
   Object.assign(textBox.style,{display:"flex",flexDirection:"column",gap:"6px"});
   const titleEl = doc.createElement("div");
-  titleEl.textContent = title || ADDON_TITLE;
+  titleEl.textContent = resolvedTitle;
   Object.assign(titleEl.style,{fontWeight:"600",fontSize:"15px"});
   const msgEl = doc.createElement("div");
   msgEl.textContent = String(message ?? "");
@@ -217,7 +952,7 @@ function showAlert(target, message, title = ADDON_TITLE){
   buttonRow.style.gridColumn = "1 / -1";
   Object.assign(buttonRow.style,{display:"flex",justifyContent:"flex-end"});
   const okBtn = doc.createElement("button");
-  okBtn.textContent = "OK";
+  okBtn.textContent = i18n("ui_button_ok");
   Object.assign(okBtn.style,{padding:"6px 16px",borderRadius:"6px",border:"1px solid rgba(0,0,0,0.2)"});
   buttonRow.appendChild(okBtn);
   panel.appendChild(buttonRow);
@@ -253,8 +988,8 @@ async function getCredentials(context){
       out = merge(out, await storage.get(keys));
     }
   }catch(e){
-    err(e);
-  }
+      err(e);
+      }
   try{
     const globalBrowser =
       (typeof browser !== "undefined" && browser?.storage?.local?.get && browser) ||
@@ -264,130 +999,12 @@ async function getCredentials(context){
       out = merge(out, await globalBrowser.storage.local.get(keys));
     }
   }catch(e){
-    err(e);
-  }
+      err(e);
+      }
   return {
     baseUrl: out.baseUrl ? out.baseUrl.replace(/\/+$/,"") : "",
     user: out.user || "",
     appPass: out.appPass || ""
-  };
-}
-
-async function getAvatarPreferences(context){
-  const keys = ["defaultAvatarMode","defaultAvatarData","defaultAvatarMime"];
-  const merge = (target, source) => {
-    if (!source) return target;
-    for (const key of keys){
-      if (source[key] != null && target[key] == null){
-        target[key] = source[key];
-      }
-    }
-    return target;
-  };
-  let out = {};
-  try{
-    const storage = context?.extension?.browser?.storage?.local;
-    if (storage?.get){
-      out = merge(out, await storage.get(keys));
-    }
-  }catch(e){
-    err(e);
-  }
-  try{
-    const globalBrowser =
-      (typeof browser !== "undefined" && browser?.storage?.local?.get && browser) ||
-      (typeof globalThis !== "undefined" && globalThis.browser?.storage?.local?.get && globalThis.browser) ||
-      null;
-    if (globalBrowser){
-      out = merge(out, await globalBrowser.storage.local.get(keys));
-    }
-  }catch(e){
-    err(e);
-  }
-  let mode = typeof out.defaultAvatarMode === "string" ? out.defaultAvatarMode.trim() : "";
-  if (!mode || !["addon","custom","none"].includes(mode)){
-    mode = "addon";
-  }
-  const data = (typeof out.defaultAvatarData === "string" && out.defaultAvatarData.length) ? out.defaultAvatarData : null;
-  const mime = (typeof out.defaultAvatarMime === "string" && out.defaultAvatarMime.length) ? out.defaultAvatarMime : null;
-  return { mode, data, mime };
-}
-
-async function resolveDefaultAvatar(context, prefs){
-  let avatarPrefs = prefs;
-  if (!avatarPrefs){
-    avatarPrefs = await getAvatarPreferences(context);
-  }
-  let mode = avatarPrefs?.mode || "addon";
-  if (!["addon","custom","none"].includes(mode)){
-    mode = "addon";
-  }
-  const fallbackPreview = defaultRoomIconURL(context, 48) || talkIconURL(context, 48) || "";
-  if (mode === "custom"){
-    const data = avatarPrefs?.data;
-    const mime = avatarPrefs?.mime || "image/png";
-    if (data){
-      const previewUrl = `data:${mime};base64,${data}`;
-      return {
-        mode: "custom",
-        hasImage: true,
-        previewUrl,
-        async getBlob(){
-          return base64ToBlob(data, mime);
-        }
-      };
-    }
-    mode = "none";
-  }
-  if (mode === "addon"){
-    let cleanupPreview = null;
-    try{
-      const addonBlob = await fetchAddonAvatarBlob(context);
-      if (addonBlob && addonBlob.size > 0){
-        const mime = addonBlob.type && addonBlob.type !== "application/octet-stream" ? addonBlob.type : "image/png";
-        const arrayBuffer = await addonBlob.arrayBuffer();
-        const makeBlob = () => new Blob([arrayBuffer.slice(0)], { type: mime });
-        let previewUrl = fallbackPreview;
-        try{
-          const objectUrl = URL.createObjectURL(makeBlob());
-          previewUrl = objectUrl;
-          cleanupPreview = () => {
-            try { URL.revokeObjectURL(objectUrl); }catch(_){}
-          };
-        }catch(e){
-          err(e);
-          previewUrl = fallbackPreview;
-        }
-        return {
-          mode: "addon",
-          hasImage: true,
-          previewUrl,
-          cleanup: cleanupPreview,
-          async getBlob(){
-            return makeBlob();
-          }
-        };
-      }
-    }catch(e){
-      err(e);
-    }
-    return {
-      mode: "addon",
-      hasImage: false,
-      previewUrl: fallbackPreview,
-      cleanup: cleanupPreview,
-      async getBlob(){
-        return null;
-      }
-    };
-  }
-  return {
-    mode: "none",
-    hasImage: false,
-    previewUrl: "",
-    async getBlob(){
-      return null;
-    }
   };
 }
 
@@ -396,22 +1013,22 @@ async function getBaseUrl(context){
     const creds = await getCredentials(context);
     if (creds.baseUrl) return creds.baseUrl;
   }catch(e){
-    err(e);
-  }
+      err(e);
+      }
   try{
     const res = await requestUtility(context, { type: "getConfig" });
     const base = res?.ok ? res?.config?.baseUrl : null;
     if (base) return String(base).replace(/\/$/,"");
   }catch(e){
-    err(e);
-  }
+      err(e);
+      }
   try{
     const res = await sendRuntimeMessage(context, "talkMenu:getConfig", {});
     const base = res?.ok ? res?.config?.baseUrl : null;
     if (base) return String(base).replace(/\/$/,"");
   }catch(e){
-    err(e);
-  }
+      err(e);
+      }
   return null;
 }
 
@@ -423,18 +1040,6 @@ function findBar(doc){ return doc.querySelector(".calendar-dialog-toolbar, .dial
 
 function talkIconURL(context, size=20){
   try { return context.extension.rootURI.spec + "icons/talk-" + size + ".png"; } catch(_) { return null; }
-}
-
-function defaultRoomIconURL(context, size=48){
-  const src = talkIconURL(context, size);
-  if (src) return src;
-  try { return context.extension.rootURI.spec + "icons/talk-48.png"; } catch(_) { return null; }
-}
-
-function buildRoomAvatarUrl(baseUrl, token, version, theme="dark"){
-  if (!baseUrl || !token) return null;
-  const v = version ? "?v=" + encodeURIComponent(version) : "";
-  return baseUrl.replace(/\/$/,"") + "/ocs/v2.php/apps/spreed/api/v1/room/" + encodeURIComponent(token) + "/avatar/" + theme + v;
 }
 
 function getCalendarItem(doc){
@@ -452,11 +1057,59 @@ function getCalendarItem(doc){
   return null;
 }
 
+function hashStringToHex(value){
+  const input = String(value ?? "");
+  let hash = 0;
+  for (let i = 0; i < input.length; i++){
+    hash = ((hash << 5) - hash) + input.charCodeAt(i);
+    hash |= 0;
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function buildEventObjectMetadata(doc, { title, startTimestamp } = {}){
+  const candidates = [];
+  const pushCandidate = (value) => {
+    if (!value) return;
+    const str = String(value).trim();
+    if (str) candidates.push(str);
+  };
+  const item = getCalendarItem(doc);
+  pushCandidate(item?.id);
+  pushCandidate(item?.uid);
+  pushCandidate(item?.hashId);
+  if (item && typeof item.getProperty === "function"){
+    try{ pushCandidate(item.getProperty("uid")); }catch(_){}
+  }
+  if (item?.icalComponent){
+    try{ pushCandidate(item.icalComponent.uid); }catch(_){}
+  }
+  let objectId = candidates.find(Boolean);
+  let fallback = false;
+  if (!objectId){
+    fallback = true;
+    const seedParts = [
+      startTimestamp != null ? String(startTimestamp) : "",
+      title || "",
+      Date.now().toString()
+    ];
+    objectId = "tb-" + hashStringToHex(seedParts.join("|"));
+  }
+  return {
+    objectType: "event",
+    objectId,
+    fallback
+  };
+}
+
 const PENDING_DELEGATION_KEY = "_nctalkPendingModerator";
 
 function queuePendingModerator(win, data){
   if (!win) return;
   if (!data || !data.token || !data.delegateId){
+    if (win[PENDING_DELEGATION_KEY]){
+      log("pending delegation cleared", { reason: "invalid data" });
+    }
     delete win[PENDING_DELEGATION_KEY];
     return;
   }
@@ -466,6 +1119,11 @@ function queuePendingModerator(win, data){
     displayName: data.displayName || data.delegateId,
     processed: false
   };
+  log("pending delegation stored", {
+    token: shortToken(data.token),
+    delegateId: data.delegateId,
+    displayName: data.displayName || data.delegateId
+  });
 }
 
 function getPendingModerator(win){
@@ -477,6 +1135,10 @@ function getPendingModerator(win){
 
 function clearPendingModerator(win){
   if (win && win[PENDING_DELEGATION_KEY]){
+    log("pending delegation cleared", {
+      token: shortToken(win[PENDING_DELEGATION_KEY].token),
+      delegateId: win[PENDING_DELEGATION_KEY].delegateId
+    });
     delete win[PENDING_DELEGATION_KEY];
   }
 }
@@ -522,10 +1184,9 @@ function setupLobbyWatcher(context, rootDoc, innerDoc, token, enableLobby){
       const current = extractStartTimestamp(targetDoc);
       if (current) state.lastTs = current;
     } catch(_) {}
-    const runUpdate = async (forced=false) => {
+    const runUpdate = async (forced = false) => {
       try{
         const ts = extractStartTimestamp(targetDoc);
-        log("lobby watcher check", ts, state.lastTs, forced);
         if (!ts) return;
         if (!forced && ts === state.lastTs) return;
         state.lastTs = ts;
@@ -535,36 +1196,48 @@ function setupLobbyWatcher(context, rootDoc, innerDoc, token, enableLobby){
           startTimestamp: ts
         };
         await performLobbyUpdate(context, payload);
-        if (forced){
-          const pending = getPendingModerator(win);
-          if (pending && !pending.processed && pending.token === token){
-            try{
-              const delegateResponse = await requestUtility(context, { type: "delegateModerator", token, newModerator: pending.delegateId });
-              if (!delegateResponse || !delegateResponse.ok){
-                throw new Error(delegateResponse?.error || "Moderator konnte nicht \u00fcbertragen werden.");
-              }
-              const delegationResult = delegateResponse.result || { delegate: pending.delegateId };
-              pending.processed = true;
-              const delegateName = pending.displayName || delegationResult.delegate || pending.delegateId;
-              let message = "Moderator \u00fcbertragen an: " + delegateName + ".";
-              if (delegationResult.leftSelf){
-                message += "\nSie wurden aus der Unterhaltung entfernt.";
-              }
-              showAlert(win, message);
-              clearPendingModerator(win);
-              if (delegationResult.leftSelf){
-                cleanupAll();
-              }
-            }catch(delegationErr){
-              pending.processed = true;
-              showAlert(win, "Moderator konnte nicht \u00fcbertragen werden:\n" + (delegationErr?.message || delegationErr));
-              clearPendingModerator(win);
-            }
+        log("lobby watcher update", { token: shortToken(token), startTimestamp: ts, forced });
+        if (!forced) return;
+        const pending = getPendingModerator(win);
+        if (!pending || pending.processed || pending.token !== token) return;
+        try{
+          const delegateResponse = await requestUtility(context, { type: "delegateModerator", token, newModerator: pending.delegateId });
+          if (!delegateResponse || !delegateResponse.ok){
+            throw new Error(delegateResponse?.error || i18n("ui_moderator_transfer_failed"));
           }
+          const delegationResult = delegateResponse.result || { delegate: pending.delegateId };
+          pending.processed = true;
+          log("pending delegation applied", {
+            token: shortToken(token),
+            delegate: delegationResult.delegate || pending.delegateId,
+            leftSelf: !!delegationResult.leftSelf
+          });
+          const delegateName = pending.displayName || delegationResult.delegate || pending.delegateId;
+          const delegationLines = [i18n("ui_alert_delegation_done", [delegateName])];
+          if (delegationResult.leftSelf){
+            delegationLines.push(i18n("ui_alert_delegation_removed"));
+          }
+          showAlert(win, delegationLines.join("\n"));
+          clearPendingModerator(win);
+          if (delegationResult.leftSelf){
+            cleanupAll();
+          }
+        }catch(delegationErr){
+          pending.processed = true;
+          log("pending delegation failed", {
+            token: shortToken(token),
+            delegateId: pending.delegateId,
+            error: delegationErr?.message || String(delegationErr)
+          });
+          showAlert(win, i18n("ui_moderator_transfer_failed_with_reason", [delegationErr?.message || delegationErr]));
+          clearPendingModerator(win);
         }
-      }catch(e){ err(e); }
+      }catch(e){
+        err(e);
+        err("lobby watcher update failed");
+      }
     };
-    const handler = (forced=false) => {
+    const handler = (forced = false) => {
       if (state.debounce){
         try { win.clearTimeout(state.debounce); }catch(_){}
         state.debounce = null;
@@ -574,18 +1247,18 @@ function setupLobbyWatcher(context, rootDoc, innerDoc, token, enableLobby){
         return;
       }
       state.debounce = win.setTimeout(() => {
-        try{
-          runUpdate(false);
-        }catch(e){ err(e); }
+        runUpdate(false).catch((e) => {
+          err(e);
+          err("lobby watcher update failed");
+        });
       }, 400);
     };
     const trigger = (ev) => {
       const type = ev?.type || "mutation";
       const forced = type === "dialogaccept" || type === "dialogextra1";
       if (forced) state.lastTs = null;
-      log("lobby watcher event", type, forced);
-    handler(forced);
-  };
+      handler(forced);
+    };
   const docs = collectEventDocs(targetDoc);
   const selectors = [
     "datetimepicker#event-starttime", "datetimepicker#item-starttime",
@@ -610,7 +1283,6 @@ function setupLobbyWatcher(context, rootDoc, innerDoc, token, enableLobby){
           obs.observe(el, { attributes: true, attributeFilter: ["value"] });
           state.cleanup.push(() => obs.disconnect());
         }catch(_){}
-        log("lobby watcher attached", sel);
       }
     }
     const winEvents = ["dialogaccept","dialogextra1","DOMContentLoaded","unload"];
@@ -619,19 +1291,21 @@ function setupLobbyWatcher(context, rootDoc, innerDoc, token, enableLobby){
       try {
         win.addEventListener(evt, listener, true);
         state.cleanup.push(() => win.removeEventListener(evt, listener, true));
-        log("lobby watcher listening", evt);
       }catch(_){}
     }
     const pollInterval = win.setInterval(() => trigger({ type: "poll" }), 4000);
     state.cleanup.push(() => win.clearInterval(pollInterval));
     handler(false);
-  }catch(e){ err(e); }
+  }catch(e){
+      err(e);
+      }
 }
 
 /**
  * Aktualisiert den Lobby-Status eines Raums. Behandelt Messaging-Fallbacks.
  */
 async function performLobbyUpdate(context, payload){
+  log("performLobbyUpdate", summarizeUtilityPayload(payload));
   const isPermissionError = (error) => {
     if (!error) return false;
     const msg = String(error.message || error).toLowerCase();
@@ -675,19 +1349,24 @@ async function performLobbyUpdate(context, payload){
 }
 
 async function sendRuntimeMessage(context, type, payload){
- let runtime = context?.extension?.browser?.runtime;
- if (!runtime && context?.extension?.runtime) runtime = context.extension.runtime;
- if (!runtime && typeof browser !== "undefined" && browser?.runtime) runtime = browser.runtime;
+  let runtime = context?.extension?.browser?.runtime;
+  if (!runtime && context?.extension?.runtime) runtime = context.extension.runtime;
+  if (!runtime && typeof browser !== "undefined" && browser?.runtime) runtime = browser.runtime;
   if (!runtime && typeof globalThis !== "undefined" && globalThis.browser?.runtime) runtime = globalThis.browser.runtime;
   if (!runtime?.sendMessage){
-    throw new Error("runtime messaging unavailable");
+    return null;
   }
-  return runtime.sendMessage({ type, payload });
+  try{
+    return await runtime.sendMessage({ type, payload });
+  }catch(e){
+      err(e);
+      return null;
+  }
 }
 
 async function listPublicRoomsDirect(context, searchTerm = ""){
   const { baseUrl, user, appPass } = await getCredentials(context);
-  if (!baseUrl || !user || !appPass) throw new Error("Nextcloud Zugang fehlt (URL/Nutzer/App-Pass).");
+  if (!baseUrl || !user || !appPass) throw localizedError("error_credentials_missing");
   const auth = "Basic " + btoa(user + ":" + appPass);
   const headers = { "OCS-APIRequest": "true", "Authorization": auth, "Accept":"application/json" };
   const url = baseUrl + "/ocs/v2.php/apps/spreed/api/v4/listed-room?searchTerm=" + encodeURIComponent(searchTerm || "");
@@ -698,16 +1377,16 @@ async function listPublicRoomsDirect(context, searchTerm = ""){
   if (!res.ok){
     const meta = data?.ocs?.meta || {};
     const detail = meta.message || raw || (res.status + " " + res.statusText);
-    throw new Error("OCS-Fehler: " + detail);
+    throw localizedError("error_ocs", [detail]);
   }
   const rooms = data?.ocs?.data;
   return Array.isArray(rooms) ? rooms : [];
 }
 
 async function getRoomInfoDirect(context, token){
-  if (!token) throw new Error("Raum-Token fehlt.");
+  if (!token) throw localizedError("error_room_token_missing");
   const { baseUrl, user, appPass } = await getCredentials(context);
-  if (!baseUrl || !user || !appPass) throw new Error("Nextcloud Zugang fehlt (URL/Nutzer/App-Pass).");
+  if (!baseUrl || !user || !appPass) throw localizedError("error_credentials_missing");
   const auth = "Basic " + btoa(user + ":" + appPass);
   const headers = { "OCS-APIRequest": "true", "Authorization": auth, "Accept":"application/json" };
   const url = baseUrl + "/ocs/v2.php/apps/spreed/api/v4/room/" + encodeURIComponent(token);
@@ -718,19 +1397,19 @@ async function getRoomInfoDirect(context, token){
   if (!res.ok){
     const meta = data?.ocs?.meta || {};
     const detail = meta.message || raw || (res.status + " " + res.statusText);
-    throw new Error("OCS-Fehler: " + detail);
+    throw localizedError("error_ocs", [detail]);
   }
   const room = data?.ocs?.data;
   if (!room || typeof room !== "object"){
-    throw new Error("Raumdetails fehlen im Response.");
+    throw localizedError("error_room_details_missing");
   }
   return room;
 }
 
 async function updateLobbyDirect(context, { token, enableLobby, startTimestamp } = {}){
-  if (!token) throw new Error("Raum-Token fehlt.");
+  if (!token) throw localizedError("error_room_token_missing");
   const { baseUrl, user, appPass } = await getCredentials(context);
-  if (!baseUrl || !user || !appPass) throw new Error("Nextcloud Zugang fehlt (URL/Nutzer/App-Pass).");
+  if (!baseUrl || !user || !appPass) throw localizedError("error_credentials_missing");
   const auth = "Basic " + btoa(user + ":" + appPass);
   const headers = { "OCS-APIRequest": "true", "Authorization": auth, "Accept":"application/json", "Content-Type":"application/json" };
   const url = baseUrl + "/ocs/v2.php/apps/spreed/api/v4/room/" + token + "/webinar/lobby";
@@ -743,53 +1422,73 @@ async function updateLobbyDirect(context, { token, enableLobby, startTimestamp }
   if (!enableLobby) delete payload.timer;
   const res = await fetch(url, { method:"PUT", headers, body: JSON.stringify(payload) });
   if (!res.ok){
-    throw new Error("Lobby-Update fehlgeschlagen: " + res.status);
+    throw localizedError("error_lobby_update_failed", [res.status]);
   }
 }
 
 async function fetchListedRooms(context, searchTerm = ""){
+  log("fetchListedRooms", { searchTerm });
   try{
     const res = await requestUtility(context, { type: "listPublicRooms", searchTerm });
     if (res){
-      if (res.ok) return Array.isArray(res.rooms) ? res.rooms : [];
-      throw new Error(res.error || "Liste der Unterhaltungen nicht verf\u00fcgbar.");
+      if (res.ok){
+        const rooms = Array.isArray(res.rooms) ? res.rooms : [];
+        log("fetchListedRooms response", { source: "utility", count: rooms.length });
+        return rooms;
+      }
+      throw new Error(res.error || "Liste der Unterhaltungen nicht verf\\u00fcgbar.");
     }
   }catch(e){
-    err(e);
-  }
+      err(e);
+      }
   try{
     const res = await sendRuntimeMessage(context, "talkMenu:listPublicRooms", { searchTerm });
     if (res){
-      if (res.ok) return Array.isArray(res.rooms) ? res.rooms : [];
+      if (res.ok){
+        const rooms = Array.isArray(res.rooms) ? res.rooms : [];
+        log("fetchListedRooms response", { source: "runtime", count: rooms.length });
+        return rooms;
+      }
       throw new Error(res.error || "Liste der Unterhaltungen nicht verfuegbar.");
     }
   }catch(e){
-    err(e);
-  }
-  return await listPublicRoomsDirect(context, searchTerm);
+      err(e);
+      }
+  const directRooms = await listPublicRoomsDirect(context, searchTerm);
+  log("fetchListedRooms response", { source: "direct", count: Array.isArray(directRooms) ? directRooms.length : 0 });
+  return directRooms;
 }
 
 async function fetchRoomDetails(context, token){
-  if (!token) throw new Error("Raum-Token fehlt.");
+  log("fetchRoomDetails", { token: shortToken(token) });
+  if (!token) throw localizedError("error_room_token_missing");
   try{
     const res = await requestUtility(context, { type: "getRoomInfo", token });
     if (res){
-      if (res.ok && res.room) return res.room;
+      if (res.ok && res.room){
+        log("fetchRoomDetails response", { source: "utility", success: true });
+        return res.room;
+      }
       throw new Error(res.error || "Raumdetails konnten nicht geladen werden.");
     }
   }catch(e){
-    err(e);
-  }
+      err(e);
+      }
   try{
     const res = await sendRuntimeMessage(context, "talkMenu:getRoomInfo", { token });
     if (res){
-      if (res.ok && res.room) return res.room;
+      if (res.ok && res.room){
+        log("fetchRoomDetails response", { source: "runtime", success: true });
+        return res.room;
+      }
       throw new Error(res.error || "Raumdetails konnten nicht geladen werden.");
     }
   }catch(e){
-    err(e);
-  }
-  return await getRoomInfoDirect(context, token);
+      err(e);
+      }
+  const directRoom = await getRoomInfoDirect(context, token);
+  log("fetchRoomDetails response", { source: "direct", success: !!directRoom });
+  return directRoom;
 }
 
 function collectEventDocs(doc){
@@ -865,7 +1564,6 @@ function extractStartTimestamp(doc){
       for (const sel of selectors){
         const el = d.querySelector && d.querySelector(sel);
         if (el && el.value){
-          log("extract start from input", sel, el.value, el.getAttribute && el.getAttribute("value"));
           let dateInput = d.querySelector('input[type="date"]') || d.querySelector('input.start-date');
           let dateStr = dateInput && dateInput.value;
           const timeStr = el.value;
@@ -951,12 +1649,13 @@ async function requestCreateFromExtension(context, payload){
       if (result !== undefined) return result;
     }catch(e){
       err(e);
-    }
+      }
   }
   return null;
 }
 
 async function fetchRoomParticipants(context, token){
+  log("fetchRoomParticipants", { token: shortToken(token) });
   try{
     const res = await requestUtility(context, { type: "getRoomParticipants", token });
     if (res){
@@ -964,186 +1663,13 @@ async function fetchRoomParticipants(context, token){
       throw new Error(res.error || "Teilnehmer konnten nicht geladen werden.");
     }
   }catch(e){
-    err(e);
-  }
+      err(e);
+      }
   return await getRoomParticipantsDirect(context, token);
 }
 
-async function uploadRoomAvatar(context, token, blob){
-  try{
-    const base64 = await blobToBase64(blob);
-    const res = await requestUtility(context, { type: "setRoomAvatar", token, data: base64, mime: blob.type });
-    if (res){
-      if (res.ok){
-        let outBase64 = base64;
-        let outMime = blob.type || "image/png";
-        if (res.dataUrl){
-          const parts = res.dataUrl.split(",");
-          if (parts.length === 2){
-            outBase64 = parts[1];
-            const meta = parts[0].match(/^data:(.*?);base64$/);
-            if (meta && meta[1]) outMime = meta[1];
-          }
-        }
-        return {
-          avatarVersion: res.avatarVersion || res.result?.avatarVersion || null,
-          base64: outBase64,
-          mime: outMime
-        };
-      }
-      throw new Error(res.error || "Avatar konnte nicht gesetzt werden.");
-    }
-    return await uploadRoomAvatarDirect(context, token, blob, base64);
-  }catch(e){
-    err(e);
-    const fallbackBase64 = await blobToBase64(blob);
-    return await uploadRoomAvatarDirect(context, token, blob, fallbackBase64);
-  }
-}
-
-function loadImageElement(file){
-  return new Promise((resolve, reject) => {
-    ensureBrowserGlobals();
-    const reader = new FileReader();
-    reader.onerror = () => reject(reader.error || new Error("Datei konnte nicht gelesen werden."));
-    reader.onload = () => {
-      let img = null;
-      try{
-        const hidden = getHiddenDOMWindow();
-        if (hidden && typeof hidden.Image === "function"){
-          img = new hidden.Image();
-        } else if (typeof Image === "function"){
-          img = new Image();
-        }
-      }catch(e){
-        err(e);
-      }
-      if (!img){
-        reject(new Error("Bildunterstuetzung nicht verfuegbar."));
-        return;
-      }
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error("Bild konnte nicht geladen werden."));
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-async function prepareAvatarBlob(file, size = 512){
-  if (!file) throw new Error("Keine Bilddatei ausgewaehlt.");
-  ensureBrowserGlobals();
-  const img = await loadImageElement(file);
-  const hidden = getHiddenDOMWindow();
-  const doc = (hidden && hidden.document) ? hidden.document : (typeof document !== "undefined" ? document : null);
-  if (!doc || typeof doc.createElement !== "function"){
-    throw new Error("Canvas-Unterstuetzung nicht verfuegbar.");
-  }
-  const canvas = doc.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  ctx.clearRect(0,0,size,size);
-  const scale = Math.min(size / img.width, size / img.height);
-  const w = Math.round(img.width * scale);
-  const h = Math.round(img.height * scale);
-  const dx = Math.round((size - w) / 2);
-  const dy = Math.round((size - h) / 2);
-  ctx.drawImage(img, dx, dy, w, h);
-  return await new Promise((resolve, reject) => {
-    if (typeof canvas.toBlob === "function"){
-      canvas.toBlob((blob) => {
-        if (blob) resolve(blob); else reject(new Error("Avatar konnte nicht vorbereitet werden."));
-      }, "image/png", 0.92);
-      return;
-    }
-    try{
-      const dataUrl = canvas.toDataURL("image/png", 0.92);
-      const base64 = (dataUrl.split(",")[1] || "").trim();
-      const blob = base64ToBlob(base64, "image/png");
-      if (blob) resolve(blob); else reject(new Error("Avatar konnte nicht vorbereitet werden."));
-    }catch(e){
-      reject(e);
-    }
-  });
-}
-
-async function blobToBase64(blob){
-  const buffer = await blob.arrayBuffer();
-  let binary = "";
-  const bytes = new Uint8Array(buffer);
-  for (const b of bytes){
-    binary += String.fromCharCode(b);
-  }
-  return btoa(binary);
-}
-
-function base64ToBlob(base64, mime = "image/png"){
-  try{
-    ensureBrowserGlobals();
-    if (!base64) return null;
-    const clean = String(base64).replace(/[\r\n\s]/g, "");
-    let bytes = null;
-    try{
-      if (typeof ChromeUtils?.base64URLDecode === "function"){
-        const normalized = clean.replace(/\+/g, "-").replace(/\//g, "_");
-        bytes = ChromeUtils.base64URLDecode(normalized, { padding: "ignore" });
-      }
-    }catch(e){
-      err(e);
-      bytes = null;
-    }
-    if (!bytes){
-      let binary = null;
-      if (typeof globalThis.atob === "function"){
-        binary = globalThis.atob(clean);
-      } else if (typeof Components !== "undefined" && Components.utils && typeof Components.utils.atob === "function"){
-        binary = Components.utils.atob(clean);
-      }
-      if (binary != null){
-        const len = binary.length;
-        bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++){
-          bytes[i] = binary.charCodeAt(i);
-        }
-      }
-    }
-    if (!bytes) return null;
-    return new Blob([bytes], { type: mime || "image/png" });
-  }catch(e){
-    err(e);
-    return null;
-  }
-}
-
-async function fetchAddonAvatarBlob(context){
-  const sizes = [128, 96, 64, 48, 32, 24];
-  for (const size of sizes){
-    const url = talkIconURL(context, size);
-    if (!url) continue;
-    try{
-      const res = await fetch(url);
-      if (!res.ok) continue;
-      const blob = await res.blob();
-      if (!blob || blob.size === 0) continue;
-      if (!blob.type || blob.type === "application/octet-stream"){
-        try{
-          const buffer = await blob.arrayBuffer();
-          return new Blob([buffer], { type: "image/png" });
-        }catch(e){
-          err(e);
-          return blob;
-        }
-      }
-      return blob;
-    }catch(e){
-      err(e);
-    }
-  }
-  return null;
-}
-
 async function requestLobbyUpdate(context, payload){
+  log("requestLobbyUpdate", summarizeUtilityPayload(payload));
   const handlers = LOBBY_HANDLERS.get(context);
   if (!handlers || handlers.size === 0) return null;
   for (const fire of handlers){
@@ -1152,7 +1678,7 @@ async function requestLobbyUpdate(context, payload){
       if (result !== undefined) return result;
     }catch(e){
       err(e);
-    }
+      }
   }
   return null;
 }
@@ -1166,11 +1692,12 @@ function ensureMenu(doc, context, anchor){
   anchor.addEventListener("click", async (event) => {
     event.preventDefault();
     event.stopPropagation();
+    if (DEBUG) log("toolbar button clicked", { url: doc?.URL || "" });
     try{
       await openCreateDialog(doc, context);
     }catch(e){
       err(e);
-    }
+      }
   });
 }
 /**
@@ -1185,7 +1712,7 @@ function buildButton(doc, context, label, tooltip){
     marginInlineStart:"8px",marginInlineEnd:"0"});
   const img = doc.createElement("img"); img.alt=""; img.width=20; img.height=20;
   const src = talkIconURL(context, 20); if (src) img.src = src;
-  const span = doc.createElement("span"); span.textContent = label || "Talk-Link einf\u00fcgen";
+  const span = doc.createElement("span"); span.textContent = label || i18n("ui_insert_button_label");
   btn.appendChild(img); btn.appendChild(span);
   return btn;
 }
@@ -1197,37 +1724,61 @@ function buildButton(doc, context, label, tooltip){
 async function openCreateDialog(doc, context){
   try{
     const docWin = doc.defaultView || window;
-    const defaultTitle = (doc.querySelector('input[type="text"]')?.value || "Besprechung");
+    const defaultTitle = doc.querySelector('input[type="text"]')?.value || i18n("ui_default_title");
+    log("openCreateDialog", {
+      defaultTitle,
+      url: doc?.URL || ""
+    });
     const overlay = doc.createElement("div");
-    Object.assign(overlay.style,{position:"fixed",inset:"0",background:"rgba(0,0,0,.25)",zIndex:"2147483646"});
+    Object.assign(overlay.style,{
+      position:"fixed",
+      inset:"0",
+      background:"rgba(0,0,0,.25)",
+      zIndex:"2147483646",
+      display:"flex",
+      alignItems:"center",
+      justifyContent:"center",
+      padding:"40px"
+    });
     const panel = doc.createElement("div");
-    Object.assign(panel.style,{position:"fixed",top:"20%",left:"50%",transform:"translateX(-50%)",
-      background:"var(--arrowpanel-background,#fff)",border:"1px solid var(--arrowpanel-border-color,#c0c0c0)",
-      borderRadius:"8px",boxShadow:"0 10px 30px rgba(0,0,0,.25)",minWidth:"460px",padding:"16px",zIndex:"2147483647"});
+    Object.assign(panel.style,{
+      position:"relative",
+      background:"var(--arrowpanel-background,#fff)",
+      border:"1px solid var(--arrowpanel-border-color,#c0c0c0)",
+      borderRadius:"8px",
+      boxShadow:"0 10px 30px rgba(0,0,0,.25)",
+      minWidth:"480px",
+      maxWidth:"640px",
+      minHeight:"560px",
+      maxHeight:"calc(100vh - 40px)",
+      overflowY:"auto",
+      padding:"20px",
+      zIndex:"2147483647"
+    });
 
     const heading = doc.createElement("h2");
-    heading.textContent = "\u00d6ffentliche Unterhaltung erstellen";
+    heading.textContent = i18n("ui_create_heading");
     Object.assign(heading.style,{margin:"0 0 10px",font:"600 16px system-ui"});
 
     const grid = doc.createElement("div");
     Object.assign(grid.style,{display:"grid",gridTemplateColumns:"160px 1fr",gap:"10px",alignItems:"center"});
 
     const titleLabel = doc.createElement("label");
-    titleLabel.textContent = "Titel";
+    titleLabel.textContent = i18n("ui_create_title_label");
     const titleInput = doc.createElement("input");
     Object.assign(titleInput,{id:"nc_title",type:"text",value:defaultTitle});
 
     const passLabel = doc.createElement("label");
-    passLabel.textContent = "Passwort (optional)";
+    passLabel.textContent = i18n("ui_create_password_label");
     const passInput = doc.createElement("input");
-    Object.assign(passInput,{id:"nc_pass",type:"password",placeholder:"Optional"});
+    Object.assign(passInput,{id:"nc_pass",type:"password",placeholder: i18n("ui_create_password_placeholder")});
 
     const lobbyLabel = doc.createElement("label");
     const lobbyCheckbox = doc.createElement("input");
     Object.assign(lobbyCheckbox,{id:"nc_lobby",type:"checkbox"});
     lobbyCheckbox.checked = true;
     lobbyLabel.appendChild(lobbyCheckbox);
-    lobbyLabel.appendChild(doc.createTextNode(" Lobby bis Startzeit"));
+    lobbyLabel.appendChild(doc.createTextNode(" " + i18n("ui_create_lobby_label")));
     const lobbySpacer = doc.createElement("div");
 
     const listableLabel = doc.createElement("label");
@@ -1235,17 +1786,66 @@ async function openCreateDialog(doc, context){
     Object.assign(listableCheckbox,{id:"nc_listable",type:"checkbox"});
     listableCheckbox.checked = true;
     listableLabel.appendChild(listableCheckbox);
-    listableLabel.appendChild(doc.createTextNode(" In Suche anzeigen"));
+    listableLabel.appendChild(doc.createTextNode(" " + i18n("ui_create_listable_label")));
     const listableSpacer = doc.createElement("div");
 
+    const modeLabel = doc.createElement("label");
+    modeLabel.textContent = i18n("ui_create_roomtype_label");
+    modeLabel.style.alignSelf = "start";
+    const modeField = doc.createElement("div");
+    Object.assign(modeField.style,{display:"flex",flexDirection:"column",gap:"4px"});
+    const roomModeName = "nc_room_mode";
+    const modeEventOption = doc.createElement("label");
+    Object.assign(modeEventOption.style,{display:"flex",alignItems:"center",gap:"6px"});
+    const modeEventRadio = doc.createElement("input");
+    Object.assign(modeEventRadio,{type:"radio",name:roomModeName,value:"event"});
+    modeEventRadio.checked = true;
+    const modeEventText = doc.createElement("span");
+    modeEventText.textContent = i18n("ui_create_mode_event");
+    modeEventOption.appendChild(modeEventRadio);
+    modeEventOption.appendChild(modeEventText);
+    const modeStandardOption = doc.createElement("label");
+    Object.assign(modeStandardOption.style,{display:"flex",alignItems:"center",gap:"6px"});
+    const modeStandardRadio = doc.createElement("input");
+    Object.assign(modeStandardRadio,{type:"radio",name:roomModeName,value:"standard"});
+    const modeStandardText = doc.createElement("span");
+    modeStandardText.textContent = i18n("ui_create_mode_standard");
+    modeStandardOption.appendChild(modeStandardRadio);
+    modeStandardOption.appendChild(modeStandardText);
+    const modeStatus = doc.createElement("div");
+    Object.assign(modeStatus.style,{fontSize:"11px",opacity:"0.7"});
+    modeStatus.textContent = "";
+    modeField.appendChild(modeEventOption);
+    modeField.appendChild(modeStandardOption);
+    modeField.appendChild(modeStatus);
+
+    const applyEventModeSupport = ({ supported, reason } = {}) => {
+      const note = reason ? String(reason) : "";
+      if (supported === false){
+        modeEventRadio.disabled = true;
+        modeEventRadio.checked = false;
+        modeStandardRadio.checked = true;
+        modeStatus.textContent = note || i18n("ui_create_mode_unsupported");
+      } else {
+        modeEventRadio.disabled = false;
+        if (!modeStandardRadio.checked && !modeEventRadio.checked){
+          modeEventRadio.checked = true;
+        }
+        modeStatus.textContent = "";
+      }
+    };
+    applyEventModeSupport({ supported:null, reason:"" });
+
     const delegateLabel = doc.createElement("label");
-    delegateLabel.textContent = "Moderator (optional)";
+    delegateLabel.textContent = i18n("ui_create_moderator_label");
     delegateLabel.style.alignSelf = "start";
     const delegateField = doc.createElement("div");
     Object.assign(delegateField.style,{display:"flex",flexDirection:"column",gap:"6px",position:"relative"});
     const delegateInput = doc.createElement("input");
-    Object.assign(delegateInput,{id:"nc_delegate",type:"text",placeholder:"Benutzername eingeben"});
+    Object.assign(delegateInput,{id:"nc_delegate",type:"text",placeholder: i18n("ui_create_moderator_placeholder")});
     delegateInput.dataset.selectionLabel = "";
+    delegateInput.dataset.selectionAvatar = "";
+    delegateInput.dataset.selectionInitials = "";
     delegateInput.autocomplete = "off";
     delegateInput.spellcheck = false;
     const delegateInputRow = doc.createElement("div");
@@ -1253,7 +1853,7 @@ async function openCreateDialog(doc, context){
     delegateInputRow.appendChild(delegateInput);
     const delegateClearBtn = doc.createElement("button");
     delegateClearBtn.type = "button";
-    delegateClearBtn.textContent = "Leeren";
+    delegateClearBtn.textContent = i18n("ui_button_clear");
     Object.assign(delegateClearBtn.style,{padding:"4px 10px",fontSize:"12px"});
     delegateInputRow.appendChild(delegateClearBtn);
     delegateField.appendChild(delegateInputRow);
@@ -1261,12 +1861,90 @@ async function openCreateDialog(doc, context){
     Object.assign(delegateStatus.style,{fontSize:"11px",opacity:"0.7",minHeight:"14px"});
     delegateField.appendChild(delegateStatus);
     const delegateSelectedInfo = doc.createElement("div");
-    Object.assign(delegateSelectedInfo.style,{fontSize:"11px",opacity:"0.75",minHeight:"14px"});
+    Object.assign(delegateSelectedInfo.style,{
+      display:"none",
+      alignItems:"center",
+      gap:"10px",
+      marginTop:"6px",
+      fontSize:"11px",
+      color:"var(--arrowpanel-color,#1b1b1b)",
+      minHeight:"42px",
+      padding:"8px 12px",
+      borderRadius:"10px",
+      background:"var(--arrowpanel-dimmed, rgba(0,0,0,0.04))"
+    });
+    const delegateSelectedAvatar = doc.createElement("div");
+    Object.assign(delegateSelectedAvatar.style,{
+      width:"36px",
+      height:"36px",
+      borderRadius:"50%",
+      background:"var(--toolbarbutton-hover-background, rgba(0,0,0,0.08))",
+      display:"none",
+      alignItems:"center",
+      justifyContent:"center",
+      overflow:"hidden",
+      flex:"0 0 36px",
+      position:"relative",
+      boxShadow:"0 0 0 1px rgba(0,0,0,0.06)"
+    });
+    const delegateSelectedAvatarCanvas = doc.createElement("canvas");
+    delegateSelectedAvatarCanvas.width = 36;
+    delegateSelectedAvatarCanvas.height = 36;
+    Object.assign(delegateSelectedAvatarCanvas.style,{
+      width:"100%",
+      height:"100%",
+      display:"none",
+      borderRadius:"50%"
+    });
+    const delegateSelectedAvatarInitials = doc.createElement("span");
+    Object.assign(delegateSelectedAvatarInitials.style,{
+      width:"100%",
+      height:"100%",
+      alignItems:"center",
+      justifyContent:"center",
+      fontWeight:"600",
+      fontSize:"13px",
+      letterSpacing:"0.02em",
+      color:"var(--arrowpanel-color,#1b1b1b)",
+      display:"none"
+    });
+    delegateSelectedAvatar.appendChild(delegateSelectedAvatarCanvas);
+    delegateSelectedAvatar.appendChild(delegateSelectedAvatarInitials);
+    const delegateSelectedText = doc.createElement("div");
+    Object.assign(delegateSelectedText.style,{
+      flex:"1",
+      lineHeight:"1.4",
+      display:"flex",
+      flexDirection:"column",
+      gap:"2px"
+    });
+    const delegateSelectedTitle = doc.createElement("div");
+    Object.assign(delegateSelectedTitle.style,{
+      fontSize:"10px",
+      textTransform:"uppercase",
+      letterSpacing:"0.08em",
+      opacity:"0.65"
+    });
+    const delegateSelectedDetails = doc.createElement("div");
+    Object.assign(delegateSelectedDetails.style,{
+      fontSize:"12px",
+      fontWeight:"500",
+      color:"var(--arrowpanel-color,#1b1b1b)",
+      wordBreak:"break-word"
+    });
+    delegateSelectedText.appendChild(delegateSelectedTitle);
+    delegateSelectedText.appendChild(delegateSelectedDetails);
+    delegateSelectedInfo.appendChild(delegateSelectedAvatar);
+    delegateSelectedInfo.appendChild(delegateSelectedText);
     delegateField.appendChild(delegateSelectedInfo);
     const delegateHint = doc.createElement("div");
     Object.assign(delegateHint.style,{fontSize:"11px",opacity:"0.75"});
-    delegateHint.textContent = "Bei Angabe wird die Moderation nach Erstellung an diesen Benutzer \u00fcbertragen und Sie verlassen den Raum.";
+    delegateHint.textContent = i18n("ui_create_moderator_hint");
     delegateField.appendChild(delegateHint);
+    const DROPDOWN_ROW_HEIGHT = 48;
+    const DROPDOWN_MIN_VISIBLE_ROWS = 5;
+    const DROPDOWN_DESIRED_HEIGHT = DROPDOWN_ROW_HEIGHT * DROPDOWN_MIN_VISIBLE_ROWS;
+
     const delegateDropdown = doc.createElement("div");
     Object.assign(delegateDropdown.style,{
       position:"absolute",
@@ -1277,7 +1955,7 @@ async function openCreateDialog(doc, context){
       border:"1px solid var(--arrowpanel-border-color,#c0c0c0)",
       borderRadius:"6px",
       boxShadow:"0 12px 26px rgba(0,0,0,.25)",
-      maxHeight:"220px",
+      maxHeight: DROPDOWN_DESIRED_HEIGHT + "px",
       overflowY:"auto",
       display:"none",
       zIndex:"2147483647"
@@ -1285,7 +1963,7 @@ async function openCreateDialog(doc, context){
     delegateField.appendChild(delegateDropdown);
 
     const adjustDelegateDropdownPosition = () => {
-      delegateDropdown.style.maxHeight = "220px";
+      delegateDropdown.style.maxHeight = DROPDOWN_DESIRED_HEIGHT + "px";
       delegateDropdown.style.top = "calc(100% + 4px)";
       delegateDropdown.style.bottom = "";
       try{
@@ -1295,20 +1973,28 @@ async function openCreateDialog(doc, context){
         const margin = 12;
         const availableBelow = panelRect.bottom - fieldRect.bottom - margin;
         const availableAbove = fieldRect.top - panelRect.top - margin;
+        const desired = DROPDOWN_DESIRED_HEIGHT;
+        const minVisible = DROPDOWN_ROW_HEIGHT * 3;
+        const computeHeight = (available) => {
+          if (!Number.isFinite(available) || available <= 0){
+            return desired;
+          }
+          const cappedDesired = Math.min(available, desired);
+          const cappedMin = Math.min(available, minVisible);
+          return Math.max(cappedDesired, cappedMin);
+        };
         if (dropdownRect.bottom > panelRect.bottom - margin){
           if (availableAbove > availableBelow){
             delegateDropdown.style.top = "";
             delegateDropdown.style.bottom = "calc(100% + 4px)";
-            const maxHeight = Math.max(120, availableAbove);
-            delegateDropdown.style.maxHeight = maxHeight + "px";
+            delegateDropdown.style.maxHeight = computeHeight(availableAbove) + "px";
           } else {
             delegateDropdown.style.top = "calc(100% + 4px)";
             delegateDropdown.style.bottom = "";
-            const maxHeight = Math.max(120, availableBelow);
-            delegateDropdown.style.maxHeight = maxHeight + "px";
+            delegateDropdown.style.maxHeight = computeHeight(availableBelow) + "px";
           }
         } else if (availableBelow > 0){
-          delegateDropdown.style.maxHeight = Math.max(120, availableBelow) + "px";
+          delegateDropdown.style.maxHeight = computeHeight(availableBelow) + "px";
         }
       }catch(_){}
     };
@@ -1328,52 +2014,152 @@ async function openCreateDialog(doc, context){
 
     const hideDelegateDropdown = () => {
       delegateDropdown.style.display = "none";
-      delegateDropdown.style.maxHeight = "220px";
+      delegateDropdown.style.maxHeight = DROPDOWN_DESIRED_HEIGHT + "px";
       delegateDropdown.style.top = "calc(100% + 4px)";
       delegateDropdown.style.bottom = "";
       delegateSuggestionsState.visible = false;
       delegateSuggestionsState.activeIndex = -1;
     };
 
+    const updateDelegateRowHighlight = () => {
+      const rows = delegateDropdown.children;
+      for (const row of rows){
+        if (!(row instanceof doc.defaultView.HTMLElement)) continue;
+        const idx = Number(row.dataset.index);
+        row.style.background = idx === delegateSuggestionsState.activeIndex
+          ? "var(--arrowpanel-dimmed, rgba(0,0,0,0.08))"
+          : "transparent";
+      }
+    };
+
+    const ensureDelegateActiveVisible = () => {
+      if (delegateSuggestionsState.activeIndex < 0) return;
+      const selector = `[data-index='${delegateSuggestionsState.activeIndex}']`;
+      const activeRow = delegateDropdown.querySelector(selector);
+      if (!activeRow) return;
+      const dropdownRect = delegateDropdown.getBoundingClientRect();
+      const rowRect = activeRow.getBoundingClientRect();
+      if (rowRect.top < dropdownRect.top){
+        delegateDropdown.scrollTop -= (dropdownRect.top - rowRect.top);
+      } else if (rowRect.bottom > dropdownRect.bottom){
+        delegateDropdown.scrollTop += (rowRect.bottom - dropdownRect.bottom);
+      }
+    };
+
     const renderDelegateDropdown = () => {
+      const savedScrollTop = delegateDropdown.scrollTop;
       delegateDropdown.textContent = "";
       if (!delegateSuggestionsState.items.length || doc.activeElement !== delegateInput){
         hideDelegateDropdown();
         return;
       }
-      delegateSuggestionsState.visible = true;
-      delegateDropdown.style.display = "block";
-      adjustDelegateDropdownPosition();
-      delegateSuggestionsState.items.forEach((item, index) => {
-        const row = doc.createElement("div");
-        Object.assign(row.style,{
-          padding:"6px 10px",
-          cursor:"pointer",
-          display:"flex",
-          flexDirection:"column",
-          gap:"2px",
+    delegateSuggestionsState.visible = true;
+    delegateDropdown.style.display = "block";
+    adjustDelegateDropdownPosition();
+    delegateSuggestionsState.items.forEach((item, index) => {
+      const row = doc.createElement("div");
+      Object.assign(row.style,{
+        padding:"6px 10px",
+        cursor:"pointer",
+        display:"flex",
+          alignItems:"flex-start",
+          gap:"8px",
           background: index === delegateSuggestionsState.activeIndex ? "var(--arrowpanel-dimmed, rgba(0,0,0,0.08))" : "transparent"
         });
         row.dataset.index = String(index);
+        if (item.avatarDataUrl){
+          const avatarWrapper = doc.createElement("div");
+          Object.assign(avatarWrapper.style,{
+            width:"28px",
+            height:"28px",
+            borderRadius:"50%",
+            overflow:"hidden",
+            flex:"0 0 28px",
+            background:"var(--toolbarbutton-hover-background, rgba(0,0,0,0.05))",
+            display:"flex",
+            alignItems:"center",
+            justifyContent:"center",
+            position:"relative",
+            color:"var(--arrowpanel-color, #1b1b1b)",
+            fontSize:"12px",
+            fontWeight:"600"
+          });
+          const avatarCanvas = doc.createElement("canvas");
+          avatarCanvas.width = 28;
+          avatarCanvas.height = 28;
+          Object.assign(avatarCanvas.style,{
+            width:"100%",
+            height:"100%",
+            display:"none"
+          });
+          const placeholder = doc.createElement("span");
+          const placeholderSource = (item.label && item.label.trim()) || (item.email && item.email.trim()) || "";
+          const placeholderChar = placeholderSource ? placeholderSource.charAt(0).toUpperCase() : "";
+          placeholder.textContent = placeholderChar;
+          Object.assign(placeholder.style,{
+            pointerEvents:"none",
+            display:"flex",
+            alignItems:"center",
+            justifyContent:"center",
+            width:"100%",
+            height:"100%"
+          });
+          avatarWrapper.appendChild(placeholder);
+          avatarWrapper.appendChild(avatarCanvas);
+          drawAvatarOnCanvas(avatarCanvas, item.avatarDataUrl).then((ok) => {
+            if (!avatarCanvas.isConnected){
+              return;
+            }
+            if (ok){
+              avatarCanvas.style.display = "block";
+              if (placeholder.isConnected){
+                avatarWrapper.removeChild(placeholder);
+              }
+            } else {
+              avatarCanvas.remove();
+              if (!placeholderChar){
+                avatarWrapper.style.display = "none";
+              }
+            }
+          }).catch((e) => {
+            err(e);
+            if (!avatarCanvas.isConnected){
+              return;
+            }
+            avatarCanvas.remove();
+            if (!placeholderChar){
+              avatarWrapper.style.display = "none";
+            }
+          });
+          row.appendChild(avatarWrapper);
+        }
+        const textBox = doc.createElement("div");
+        Object.assign(textBox.style,{
+          display:"flex",
+          flexDirection:"column",
+          gap:"2px",
+          minWidth:"0"
+        });
         const primary = doc.createElement("div");
         primary.textContent = item.label || item.id || item.email || "";
         primary.style.fontSize = "12px";
         const emailLine = doc.createElement("div");
         emailLine.textContent = item.email || "";
         Object.assign(emailLine.style,{fontSize:"11px",opacity:"0.75"});
-        row.appendChild(primary);
+        textBox.appendChild(primary);
         if (item.email){
-          row.appendChild(emailLine);
+          textBox.appendChild(emailLine);
         }
         if (item.id && item.id !== item.email){
           const idLine = doc.createElement("div");
           idLine.textContent = item.id;
           Object.assign(idLine.style,{fontSize:"10px",opacity:"0.6"});
-          row.appendChild(idLine);
+          textBox.appendChild(idLine);
         }
+        row.appendChild(textBox);
         row.addEventListener("mouseenter", () => {
           delegateSuggestionsState.activeIndex = index;
-          renderDelegateDropdown();
+          updateDelegateRowHighlight();
         });
         const handleRowActivate = (event) => {
           event.preventDefault();
@@ -1386,6 +2172,9 @@ async function openCreateDialog(doc, context){
         row.addEventListener("click", handleRowActivate, true);
         delegateDropdown.appendChild(row);
       });
+      delegateDropdown.scrollTop = savedScrollTop;
+      updateDelegateRowHighlight();
+      ensureDelegateActiveVisible();
     };
 
     const formatDelegateDisplay = (item) => {
@@ -1398,13 +2187,88 @@ async function openCreateDialog(doc, context){
       return email || base;
     };
 
+    const computeDelegateInitials = (item) => {
+      if (!item) return "";
+      const source = (item.label || item.id || item.email || "").trim();
+      if (!source) return "";
+      const parts = source.split(/\s+/).filter(Boolean);
+      const letters = ((parts[0] || "").charAt(0) + (parts[1] || "").charAt(0)).toUpperCase();
+      const fallback = letters || source.charAt(0);
+      return fallback.toUpperCase().slice(0, 2);
+    };
+
+    let selectedAvatarDrawSource = "";
+    const updateDelegateSelectedDisplay = () => {
+      const label = delegateInput.dataset.selectionLabel || "";
+      const avatarData = delegateInput.dataset.selectionAvatar || "";
+      const initials = delegateInput.dataset.selectionInitials || "";
+      if (!label){
+        delegateSelectedInfo.style.display = "none";
+        delegateSelectedAvatar.style.display = "none";
+        delegateSelectedAvatarCanvas.style.display = "none";
+        delegateSelectedAvatarInitials.style.display = "none";
+        delegateSelectedTitle.textContent = "";
+        delegateSelectedDetails.textContent = "";
+        selectedAvatarDrawSource = "";
+        return;
+      }
+      delegateSelectedInfo.style.display = "flex";
+      delegateSelectedTitle.textContent = i18n("ui_delegate_selected_title");
+      delegateSelectedDetails.textContent = label;
+      const effectiveInitials = initials || label.trim().charAt(0).toUpperCase();
+      delegateSelectedAvatarInitials.textContent = effectiveInitials;
+      delegateSelectedAvatarInitials.style.display = effectiveInitials ? "flex" : "none";
+      delegateSelectedAvatar.style.display = (avatarData || effectiveInitials) ? "flex" : "none";
+      if (!avatarData){
+        delegateSelectedAvatarCanvas.style.display = "none";
+        selectedAvatarDrawSource = "";
+        if (!effectiveInitials){
+          delegateSelectedAvatar.style.display = "none";
+        }
+        return;
+      }
+      if (avatarData === selectedAvatarDrawSource && delegateSelectedAvatarCanvas.style.display === "block"){
+        return;
+      }
+      selectedAvatarDrawSource = avatarData;
+      delegateSelectedAvatarCanvas.style.display = "none";
+      drawAvatarOnCanvas(delegateSelectedAvatarCanvas, avatarData).then((ok) => {
+        if (delegateInput.dataset.selectionAvatar !== avatarData){
+          return;
+        }
+        if (ok){
+          delegateSelectedAvatarCanvas.style.display = "block";
+          delegateSelectedAvatarInitials.style.display = "none";
+        } else {
+          delegateSelectedAvatarCanvas.style.display = "none";
+          delegateSelectedAvatarInitials.style.display = effectiveInitials ? "flex" : "none";
+          if (!effectiveInitials){
+            delegateSelectedAvatar.style.display = "none";
+          }
+        }
+      }).catch(() => {
+        if (delegateInput.dataset.selectionAvatar !== avatarData){
+          return;
+        }
+        delegateSelectedAvatarCanvas.style.display = "none";
+        delegateSelectedAvatarInitials.style.display = effectiveInitials ? "flex" : "none";
+        if (!effectiveInitials){
+          delegateSelectedAvatar.style.display = "none";
+        }
+      });
+    };
+
+    updateDelegateSelectedDisplay();
+
     const selectDelegateSuggestion = (index) => {
       const suggestion = delegateSuggestionsState.items[index];
       if (!suggestion) return;
       delegateInput.value = suggestion.id;
       const selectionLabel = formatDelegateDisplay(suggestion);
       delegateInput.dataset.selectionLabel = selectionLabel;
-      delegateSelectedInfo.textContent = selectionLabel ? "Ausgew\u00e4hlt: " + selectionLabel : "";
+      delegateInput.dataset.selectionAvatar = suggestion.avatarDataUrl || "";
+      delegateInput.dataset.selectionInitials = computeDelegateInitials(suggestion);
+      updateDelegateSelectedDisplay();
       updateDelegateStatus("");
       hideDelegateDropdown();
       try{
@@ -1422,7 +2286,7 @@ async function openCreateDialog(doc, context){
         delegateSuggestionsState.items = [];
         delegateSuggestionsState.activeIndex = -1;
         hideDelegateDropdown();
-        updateDelegateStatus(term ? "Suche..." : "Lade Benutzer...");
+        updateDelegateStatus(term ? i18n("ui_delegate_status_searching") : i18n("ui_delegate_status_loading"));
         try{
           const response = await requestUtility(context, { type: "searchUsers", searchTerm: term, limit: 200 });
           if (seq !== delegateSearchSeq) return;
@@ -1450,17 +2314,19 @@ async function openCreateDialog(doc, context){
           delegateSuggestionsState.items = items;
           delegateSuggestionsState.activeIndex = items.length ? 0 : -1;
           if (!items.length){
-            updateDelegateStatus(term ? "Keine Treffer mit E-Mail." : "Keine Benutzer mit E-Mail gefunden.");
+            updateDelegateStatus(term ? i18n("ui_delegate_status_none_with_email") : i18n("ui_delegate_status_none_found"));
             hideDelegateDropdown();
           }else{
-            const countText = items.length === 1 ? "1 Treffer mit E-Mail." : items.length + " Treffer mit E-Mail.";
+            const countText = items.length === 1
+              ? i18n("ui_delegate_status_single")
+              : i18n("ui_delegate_status_many", [items.length]);
             updateDelegateStatus(countText);
             renderDelegateDropdown();
           }
         }catch(e){
           if (seq !== delegateSearchSeq) return;
           err(e);
-          updateDelegateStatus(e?.message || "Benutzersuche fehlgeschlagen.", true);
+          updateDelegateStatus(e?.message || i18n("ui_delegate_status_error"), true);
           delegateSuggestionsState.items = [];
           hideDelegateDropdown();
         }
@@ -1479,12 +2345,14 @@ async function openCreateDialog(doc, context){
         event.preventDefault();
         const count = delegateSuggestionsState.items.length;
         delegateSuggestionsState.activeIndex = (delegateSuggestionsState.activeIndex + 1 + count) % count;
-        renderDelegateDropdown();
+        updateDelegateRowHighlight();
+        ensureDelegateActiveVisible();
       } else if (event.key === "ArrowUp"){
         event.preventDefault();
         const count = delegateSuggestionsState.items.length;
         delegateSuggestionsState.activeIndex = (delegateSuggestionsState.activeIndex - 1 + count) % count;
-        renderDelegateDropdown();
+        updateDelegateRowHighlight();
+        ensureDelegateActiveVisible();
       } else if (event.key === "Enter"){
         if (delegateSuggestionsState.activeIndex >= 0){
           event.preventDefault();
@@ -1498,13 +2366,15 @@ async function openCreateDialog(doc, context){
     delegateInput.addEventListener("focus", () => {
       delegateSuggestionsState.items = [];
       delegateSuggestionsState.activeIndex = -1;
-      delegateSelectedInfo.textContent = delegateInput.dataset.selectionLabel ? "Ausgew\u00e4hlt: " + delegateInput.dataset.selectionLabel : "";
+      updateDelegateSelectedDisplay();
       scheduleDelegateSearch(delegateInput.value.trim());
     });
 
     delegateInput.addEventListener("input", () => {
       delegateInput.dataset.selectionLabel = "";
-      delegateSelectedInfo.textContent = "";
+      delegateInput.dataset.selectionAvatar = "";
+      delegateInput.dataset.selectionInitials = "";
+      updateDelegateSelectedDisplay();
       scheduleDelegateSearch(delegateInput.value.trim());
     });
 
@@ -1516,7 +2386,9 @@ async function openCreateDialog(doc, context){
     delegateClearBtn.addEventListener("click", () => {
       delegateInput.value = "";
       delegateInput.dataset.selectionLabel = "";
-      delegateSelectedInfo.textContent = "";
+      delegateInput.dataset.selectionAvatar = "";
+      delegateInput.dataset.selectionInitials = "";
+      updateDelegateSelectedDisplay();
       updateDelegateStatus("");
       scheduleDelegateSearch("");
       delegateInput.focus();
@@ -1527,7 +2399,6 @@ async function openCreateDialog(doc, context){
 
     const cleanupDialogState = () => {
       updateDelegateStatus("");
-      delegateSelectedInfo.textContent = "";
       if (delegateSearchTimeout){
         docWin.clearTimeout(delegateSearchTimeout);
         delegateSearchTimeout = null;
@@ -1535,6 +2406,10 @@ async function openCreateDialog(doc, context){
       delegateSuggestionsState.items = [];
       delegateSuggestionsState.activeIndex = -1;
       hideDelegateDropdown();
+      delegateInput.dataset.selectionLabel = "";
+      delegateInput.dataset.selectionAvatar = "";
+      delegateInput.dataset.selectionInitials = "";
+      updateDelegateSelectedDisplay();
     };
 
     const closeOverlay = () => {
@@ -1551,6 +2426,8 @@ async function openCreateDialog(doc, context){
     grid.appendChild(lobbySpacer);
     grid.appendChild(listableLabel);
     grid.appendChild(listableSpacer);
+    grid.appendChild(modeLabel);
+    grid.appendChild(modeField);
     grid.appendChild(delegateLabel);
     grid.appendChild(delegateField);
 
@@ -1559,11 +2436,11 @@ async function openCreateDialog(doc, context){
 
     const cancelBtn = doc.createElement("button");
     cancelBtn.id = "nc_cancel";
-    cancelBtn.textContent = "Abbrechen";
+    cancelBtn.textContent = i18n("ui_button_cancel");
 
     const okBtn = doc.createElement("button");
     okBtn.id = "nc_ok";
-    okBtn.textContent = "OK";
+    okBtn.textContent = i18n("ui_button_ok");
     okBtn.style.appearance = "auto";
 
     buttons.appendChild(cancelBtn);
@@ -1572,6 +2449,22 @@ async function openCreateDialog(doc, context){
     panel.appendChild(heading);
     panel.appendChild(grid);
     panel.appendChild(buttons);
+
+    requestUtility(context, { type: "supportsEventConversation" }).then((res) => {
+      log("supportsEventConversation response", {
+        ok: !!(res && res.ok),
+        supported: res ? res.supported : undefined,
+        reason: res ? (res.reason || res.error || "") : ""
+      });
+      if (res && res.ok){
+        applyEventModeSupport({ supported: res.supported, reason: res.reason });
+      } else if (res){
+        applyEventModeSupport({ supported: null, reason: res.error || "" });
+      }
+    }).catch((e) => {
+      err(e);
+      applyEventModeSupport({ supported:null, reason: e?.message || "" });
+    });
 
     overlay.addEventListener("click",(e)=>{ if(e.target===overlay) closeOverlay(); });
     cancelBtn.addEventListener("click", () => closeOverlay());
@@ -1583,11 +2476,11 @@ async function openCreateDialog(doc, context){
       const enableListable = !!listableCheckbox.checked;
       const originalLabel = okBtn.textContent;
       if (password && password.length < 5){
-        showAlert(docWin, "Das Passwort muss mindestens 5 Zeichen lang sein.");
+        showAlert(docWin, i18n("ui_create_password_short"));
         return;
       }
       okBtn.disabled = true;
-      okBtn.textContent = "Erstelle...";
+      okBtn.textContent = i18n("ui_button_create_progress");
 
       const restore = () => {
         okBtn.disabled = false;
@@ -1599,36 +2492,50 @@ async function openCreateDialog(doc, context){
 
       const startTs = extractStartTimestamp(innerDoc);
       const delegateId = delegateInput.value.trim();
+      const useEventConversation = modeEventRadio.checked && !modeEventRadio.disabled;
+      const eventMetadata = useEventConversation ? buildEventObjectMetadata(innerDoc, { title, startTimestamp: startTs }) : null;
+
+      const createPayload = {
+        title,
+        password: password || undefined,
+        enableLobby,
+        enableListable,
+        description: descriptionText || "",
+        startTimestamp: startTs,
+        eventConversation: useEventConversation,
+        objectType: eventMetadata?.objectType,
+        objectId: eventMetadata?.objectId
+      };
+      log("create dialog payload", describeCreatePayload(createPayload));
 
       let response = null;
       try {
-        response = await requestCreateFromExtension(context, {
-          title,
-          password: password || undefined,
-          enableLobby,
-          enableListable,
-          description: descriptionText || "",
-          startTimestamp: startTs
-        });
+        response = await requestCreateFromExtension(context, createPayload);
       } catch(sendErr) {
         err(sendErr);
         restore();
-        showAlert(docWin, "Senden an Hintergrundskript fehlgeschlagen:\n" + (sendErr?.message || String(sendErr)));
+        showAlert(docWin, i18n("ui_create_send_failed", [sendErr?.message || String(sendErr)]));
         return;
       }
 
       if (!response) {
         restore();
-        showAlert(docWin, "Kein Nextcloud Talk Handler registriert. Bitte Add-on neu laden.");
+        showAlert(docWin, i18n("ui_create_no_handler"));
         return;
       }
 
       if (!response.ok || !response.url) {
         restore();
-        const msg = response.error ? response.error : "Unbekannter Fehler beim Erstellen der Unterhaltung.";
-        showAlert(docWin, "Nextcloud Talk konnte nicht erstellt werden:\n" + msg + "\nBitte Optionen pruefen.");
+        const msg = response.error ? response.error : i18n("ui_create_unknown_error");
+        showAlert(docWin, i18n("ui_create_failed", [msg]));
         return;
       }
+
+      log("create dialog success", {
+        token: response.token ? shortToken(response.token) : "",
+        fallback: !!response.fallback,
+        reason: response.reason || ""
+      });
 
       clearPendingModerator(docWin);
 
@@ -1636,6 +2543,11 @@ async function openCreateDialog(doc, context){
       let pendingDelegation = null;
       const delegateDisplayName = delegateInput.dataset.selectionLabel || delegateId;
       if (delegateId){
+        log("create dialog delegate request", {
+          token: response.token ? shortToken(response.token) : "",
+          delegateId,
+          fromLobbyQueue: !!enableLobby
+        });
         if (enableLobby){
           pendingDelegation = {
             token: response.token,
@@ -1647,35 +2559,47 @@ async function openCreateDialog(doc, context){
           try{
             const delegateResponse = await requestUtility(context, { type: "delegateModerator", token: response.token, newModerator: delegateId });
             if (!delegateResponse || !delegateResponse.ok){
-              const msg = delegateResponse?.error || "Moderator konnte nicht \u00fcbertragen werden.";
+              const msg = delegateResponse?.error || i18n("ui_moderator_transfer_failed");
               showAlert(docWin, msg);
             }else{
               delegationResult = delegateResponse.result || { delegate: delegateId };
+              log("create dialog delegate success", {
+                token: response.token ? shortToken(response.token) : "",
+                delegate: delegationResult.delegate || delegateId,
+                leftSelf: !!delegationResult.leftSelf
+              });
             }
           }catch(delegateErr){
             err(delegateErr);
-            showAlert(docWin, "Moderator konnte nicht \u00fcbertragen werden:\n" + (delegateErr?.message || delegateErr));
+            showAlert(docWin, i18n("ui_moderator_transfer_failed_with_reason", [delegateErr?.message || delegateErr]));
           }
         }
       }
 
       closeOverlay();
       const placed = fillIntoEvent(innerDoc, response.url, password || null, title);
-      let alertMsg = "Talk-Link eingefuegt:\n" + response.url;
-      if (!placed) alertMsg += "\n(Hinweis: Feld 'Ort' wurde nicht automatisch gefunden.)";
+      if (useEventConversation && response.fallback){
+        applyEventModeSupport({ supported:false, reason: response.reason || "" });
+      }
+      const alertLines = [i18n("ui_alert_link_inserted", [response.url])];
+      if (!placed) alertLines.push(i18n("ui_alert_location_missing"));
       if (response.fallback) {
-        alertMsg += "\n(Hinweis: Es wurde ein Fallback-Link ohne API erzeugt.)";
-        if (response.reason) alertMsg += "\nGrund: " + response.reason;
+        if (useEventConversation){
+          alertLines.push(i18n("ui_alert_event_fallback"));
+        } else {
+          alertLines.push(i18n("ui_alert_generic_fallback"));
+        }
+        if (response.reason) alertLines.push(i18n("ui_alert_reason", [response.reason]));
       }
       if (pendingDelegation){
-        alertMsg += "\nModerator wird beim Speichern/Senden \u00fcbertragen an: " + (pendingDelegation.displayName || pendingDelegation.delegateId) + ".";
+        alertLines.push(i18n("ui_alert_pending_delegation", [pendingDelegation.displayName || pendingDelegation.delegateId]));
       } else if (delegationResult && delegationResult.delegate){
-        alertMsg += "\nModerator \u00fcbertragen an: " + (delegateDisplayName || delegationResult.delegate) + ".";
+        alertLines.push(i18n("ui_alert_delegation_done", [delegateDisplayName || delegationResult.delegate]));
         if (delegationResult.leftSelf){
-          alertMsg += "\nSie wurden aus der Unterhaltung entfernt.";
+          alertLines.push(i18n("ui_alert_delegation_removed"));
         }
       }
-      showAlert(docWin, alertMsg);
+      showAlert(docWin, alertLines.join("\n"));
       const watcherAllowed = enableLobby && response.token;
       if (watcherAllowed){
         setupLobbyWatcher(context, doc, innerDoc, response.token, true);
@@ -1685,24 +2609,27 @@ async function openCreateDialog(doc, context){
     overlay.appendChild(panel);
     (doc.body||doc.documentElement).appendChild(overlay);
     okBtn.focus();
-    log("create dialog shown");
   }catch(e){
     err(e);
+    err("create dialog failed");
     const docWin = doc.defaultView || window;
-    const base = await getBaseUrl(context) || docWin.prompt("Nextcloud Basis-URL (z.B. https://cloud.example.com):","https://cloud.example.com");
+    const base = await getBaseUrl(context) || docWin.prompt(i18n("ui_prompt_base_url"), "https://cloud.example.com");
     if (!base) return;
-    const title = docWin.prompt("Titel fuer neue oeffentliche Unterhaltung:","Besprechung");
+    const title = docWin.prompt(i18n("ui_prompt_title"), i18n("ui_default_title"));
     if (title === null) return;
     const token = randToken(10);
     const url = String(base).replace(/\/$/,"") + "/call/" + token;
     const ok = fillIntoEvent(doc, url, null);
-    showAlert(docWin, "Talk-Link eingef\u00fcgt:\n" + url + (ok ? "" : "\n(Hinweis: Feld 'Ort' wurde nicht automatisch gefunden.)"));
+    const fallbackLines = [i18n("ui_alert_link_inserted", [url])];
+    if (!ok) fallbackLines.push(i18n("ui_alert_location_missing"));
+    showAlert(docWin, fallbackLines.join("\n"));
   }
 }
 async function openSelectDialog(doc, context){
   let overlay = null;
   try{
     const docWin = doc.defaultView || window;
+    log("openSelectDialog", { url: doc?.URL || "" });
     overlay = doc.createElement("div");
     Object.assign(overlay.style,{position:"fixed",inset:"0",background:"rgba(0,0,0,.25)",zIndex:"2147483646"});
     const panel = doc.createElement("div");
@@ -1714,14 +2641,14 @@ async function openSelectDialog(doc, context){
     (doc.body || doc.documentElement).appendChild(overlay);
 
     const heading = doc.createElement("h2");
-    heading.textContent = "\u00d6ffentliche Unterhaltung ausw\u00e4hlen";
+    heading.textContent = i18n("ui_select_heading");
     Object.assign(heading.style,{margin:"0 0 10px",font:"600 16px system-ui"});
     panel.appendChild(heading);
 
     const searchBox = doc.createElement("div");
     Object.assign(searchBox.style,{marginBottom:"8px"});
     const searchInput = doc.createElement("input");
-    Object.assign(searchInput,{type:"search",placeholder:"Suche"});
+    Object.assign(searchInput,{type:"search",placeholder: i18n("ui_select_search_placeholder")});
     Object.assign(searchInput.style,{width:"100%",padding:"8px 10px",border:"1px solid var(--arrowpanel-border-color,#c0c0c0)",borderRadius:"6px"});
     searchBox.appendChild(searchInput);
     panel.appendChild(searchBox);
@@ -1745,7 +2672,7 @@ async function openSelectDialog(doc, context){
     detailBox.appendChild(detailHeader);
 
     const detailTitle = doc.createElement("h3");
-    detailTitle.textContent = "Keine Unterhaltung ausgewaehlt";
+    detailTitle.textContent = i18n("ui_select_no_selection");
     Object.assign(detailTitle.style,{margin:"0",font:"600 15px system-ui"});
     detailHeader.appendChild(detailTitle);
 
@@ -1771,7 +2698,7 @@ async function openSelectDialog(doc, context){
     lobbyCheckbox.type = "checkbox";
     lobbyCheckbox.disabled = true;
     lobbyRow.appendChild(lobbyCheckbox);
-    lobbyRow.appendChild(doc.createTextNode(" Lobby einschalten (Startzeit aus Termin)"));
+    lobbyRow.appendChild(doc.createTextNode(" " + i18n("ui_select_lobby_toggle")));
     detailBox.appendChild(lobbyRow);
 
     const lobbyInfo = doc.createElement("div");
@@ -1787,7 +2714,7 @@ async function openSelectDialog(doc, context){
     const baseUrl = creds.baseUrl || await getBaseUrl(context);
     if (!baseUrl){
       overlay.remove();
-      showAlert(docWin, "Bitte hinterlegen Sie die Nextcloud URL in den Add-on-Optionen.");
+      showAlert(docWin, i18n("ui_select_missing_base_url"));
       return;
     }
     const normalizedBaseUrl = String(baseUrl).replace(/\/$/,"");
@@ -1797,9 +2724,9 @@ async function openSelectDialog(doc, context){
     panel.appendChild(buttons);
 
     const cancelBtn = doc.createElement("button");
-    cancelBtn.textContent = "Abbrechen";
+    cancelBtn.textContent = i18n("ui_button_cancel");
     const okBtn = doc.createElement("button");
-    okBtn.textContent = "\u00dcbernehmen";
+    okBtn.textContent = i18n("ui_button_apply");
     okBtn.disabled = true;
 
     buttons.appendChild(cancelBtn);
@@ -1836,19 +2763,19 @@ async function openSelectDialog(doc, context){
 
     function updateLobbyInfo(timer, enabled){
       if (!enabled){
-        lobbyInfo.textContent = "Lobby deaktiviert.";
+        lobbyInfo.textContent = i18n("ui_lobby_disabled");
         return;
       }
       if (typeof timer === "number" && Number.isFinite(timer) && timer > 0){
         const date = new Date(timer * 1000);
-        lobbyInfo.textContent = "Lobby aktiv (Start: " + date.toLocaleString() + ")";
+        lobbyInfo.textContent = i18n("ui_lobby_active_with_time", [date.toLocaleString()]);
       } else {
-        lobbyInfo.textContent = "Lobby aktiv (keine Startzeit gesetzt).";
+        lobbyInfo.textContent = i18n("ui_lobby_active_without_time");
       }
     }
 
     function clearDetails(){
-      detailTitle.textContent = "Keine Unterhaltung ausgewaehlt";
+      detailTitle.textContent = i18n("ui_select_no_selection");
       detailMeta.textContent = "";
       linkRow.textContent = "";
       descLabel.textContent = "";
@@ -1869,11 +2796,13 @@ async function openSelectDialog(doc, context){
       listContainer.textContent = "";
       activeItem = null;
       if (!rooms.length){
-        setStatus("Keine Unterhaltungen gefunden.");
+        setStatus(i18n("ui_select_status_none"));
         clearDetails();
         return;
       }
-      const countText = rooms.length === 1 ? "1 Unterhaltung gefunden." : rooms.length + " Unterhaltungen gefunden.";
+      const countText = rooms.length === 1
+        ? i18n("ui_select_status_single")
+        : i18n("ui_select_status_many", [rooms.length]);
       setStatus(countText);
       for (const room of rooms){
         const item = doc.createElement("div");
@@ -1900,11 +2829,11 @@ async function openSelectDialog(doc, context){
           item.appendChild(desc);
         }
         const badges = [];
-        if (room.hasPassword) badges.push("Passwort erforderlich");
+        if (room.hasPassword) badges.push(i18n("ui_badge_password_required"));
         if (room.listable){
-          badges.push("Oeffentlich gelistet");
+          badges.push(i18n("ui_badge_listed"));
         } else if (room.source === "own" || room.isParticipant){
-          badges.push("Eigene Teilnahme");
+          badges.push(i18n("ui_badge_owned"));
         }
         if (badges.length){
           const meta = doc.createElement("div");
@@ -1926,15 +2855,15 @@ async function openSelectDialog(doc, context){
       currentToken = room.token;
       detailTitle.textContent = room.displayName || room.name || room.token;
       const metaParts = [];
-      if (room.listable) metaParts.push("Oeffentlich gelistet");
-      else if (room.source === "own" || room.isParticipant) metaParts.push("Eigene Teilnahme");
-      if (room.hasPassword) metaParts.push("Passwort erforderlich");
-      if (room.guestsAllowed !== false) metaParts.push("Gaeste erlaubt");
+      if (room.listable) metaParts.push(i18n("ui_badge_listed"));
+      else if (room.source === "own" || room.isParticipant) metaParts.push(i18n("ui_badge_owned"));
+      if (room.hasPassword) metaParts.push(i18n("ui_badge_password_required"));
+      if (room.guestsAllowed !== false) metaParts.push(i18n("ui_badge_guests_allowed"));
       detailMeta.textContent = metaParts.join(" | ");
       linkRow.textContent = normalizedBaseUrl + "/call/" + currentToken;
       descLabel.textContent = (room.description || "").trim();
-      passwordInfo.textContent = room.hasPassword ? "Passwortschutz aktiv." : "Kein Passwort gesetzt.";
-      lobbyInfo.textContent = "Lade Raumdetails...";
+      passwordInfo.textContent = room.hasPassword ? i18n("ui_password_info_yes") : i18n("ui_password_info_no");
+      lobbyInfo.textContent = i18n("ui_lobby_loading_details");
       okBtn.disabled = true;
       const requestToken = ++detailRequestToken;
 
@@ -1943,30 +2872,20 @@ async function openSelectDialog(doc, context){
         if (detailRequestToken !== requestToken) return;
         const normalized = Object.assign({}, room, rawDetails || {});
         normalized.token = normalized.token || currentToken;
-        if (room._avatarObjectUrl && !normalized._avatarObjectUrl){
-          normalized._avatarObjectUrl = room._avatarObjectUrl;
-        }
-        if (room._avatarBase64 && !normalized._avatarBase64){
-          normalized._avatarBase64 = room._avatarBase64;
-          normalized._avatarMime = room._avatarMime;
-        }
-        if (!normalized.avatarVersion && room.avatarVersion){
-          normalized.avatarVersion = room.avatarVersion;
-        }
         selectedDetails = normalized;
         detailTitle.textContent = normalized.displayName || normalized.name || normalized.token;
         const normalizedMeta = [];
-        if (normalized.listable) normalizedMeta.push("Oeffentlich gelistet");
-        else if (normalized.source === "own" || normalized.isParticipant) normalizedMeta.push("Eigene Teilnahme");
-        if (normalized.hasPassword) normalizedMeta.push("Passwort erforderlich");
-        normalizedMeta.push(normalized.guestsAllowed === false ? "Keine Gaeste erlaubt" : "Gaeste erlaubt");
+        if (normalized.listable) normalizedMeta.push(i18n("ui_badge_listed"));
+        else if (normalized.source === "own" || normalized.isParticipant) normalizedMeta.push(i18n("ui_badge_owned"));
+        if (normalized.hasPassword) normalizedMeta.push(i18n("ui_badge_password_required"));
+        normalizedMeta.push(normalized.guestsAllowed === false ? i18n("ui_badge_guests_forbidden") : i18n("ui_badge_guests_allowed"));
         detailMeta.textContent = normalizedMeta.join(" | ");
         linkRow.textContent = normalizedBaseUrl + "/call/" + normalized.token;
         descLabel.textContent = (normalized.description || "").trim();
-        passwordInfo.textContent = normalized.hasPassword ? "Passwortschutz aktiv." : "Kein Passwort gesetzt.";
+        passwordInfo.textContent = normalized.hasPassword ? i18n("ui_password_info_yes") : i18n("ui_password_info_no");
         desiredLobbyState = normalized.lobbyState === 1;
         lobbyCheckbox.checked = desiredLobbyState;
-        lobbyInfo.textContent = "Lobby-Status wird ermittelt...";
+        lobbyInfo.textContent = i18n("ui_lobby_fetching_status");
         okBtn.disabled = true;
 
         const roomPermissions = typeof normalized.permissions === "number" ? normalized.permissions : null;
@@ -1994,11 +2913,11 @@ async function openSelectDialog(doc, context){
           }
         }
         if (!allowParticipantLookup && !isModerator){
-          moderatorInfo.textContent = "Keine Teilnahme an dieser Unterhaltung (nur Anzeige).";
+          moderatorInfo.textContent = i18n("ui_moderator_not_participant");
         }
         lobbyCheckbox.disabled = !isModerator;
-        lobbyCheckbox.title = isModerator ? "" : "Keine Berechtigung zum Aendern der Lobby.";
-        moderatorInfo.textContent = isModerator ? "Sie koennen die Lobby verwalten." : "Sie sind kein Moderator dieser Unterhaltung.";
+        lobbyCheckbox.title = isModerator ? "" : i18n("ui_lobby_no_permission");
+        moderatorInfo.textContent = isModerator ? i18n("ui_moderator_can_manage") : i18n("ui_moderator_cannot_manage");
         desiredLobbyState = lobbyCheckbox.checked;
         updateLobbyInfo(normalized.lobbyTimer, desiredLobbyState);
         okBtn.disabled = false;
@@ -2006,19 +2925,11 @@ async function openSelectDialog(doc, context){
         if (entry){
           entry.description = normalized.description || entry.description;
           entry.hasPassword = !!normalized.hasPassword;
-          entry.avatarVersion = normalized.avatarVersion || entry.avatarVersion;
-          if (normalized._avatarObjectUrl){
-            entry._avatarObjectUrl = normalized._avatarObjectUrl;
-          }
-          if (normalized._avatarBase64){
-            entry._avatarBase64 = normalized._avatarBase64;
-            entry._avatarMime = normalized._avatarMime;
-          }
         }
       }catch(fetchErr){
         err(fetchErr);
         if (detailRequestToken !== requestToken) return;
-        lobbyInfo.textContent = "Details konnten nicht geladen werden.";
+        lobbyInfo.textContent = i18n("ui_details_error");
         moderatorInfo.textContent = "";
         okBtn.disabled = true;
       }
@@ -2048,7 +2959,7 @@ async function openSelectDialog(doc, context){
 
     async function loadRooms(term){
       const seq = ++searchSeq;
-      setStatus("Lade...");
+      setStatus(i18n("ui_select_status_loading"));
       listContainer.textContent = "";
       clearDetails();
       try{
@@ -2076,11 +2987,12 @@ async function openSelectDialog(doc, context){
           const right = (b.displayName || b.name || "").toLowerCase();
           return left.localeCompare(right);
         });
+        log("loadRooms result", { term: term || "", count: rooms.length });
         renderList();
       }catch(loadErr){
         err(loadErr);
         if (seq !== searchSeq) return;
-        setStatus("Fehler: " + (loadErr?.message || loadErr));
+        setStatus(i18n("ui_select_status_error", [loadErr?.message || loadErr]));
       }
     }
 
@@ -2090,10 +3002,15 @@ async function openSelectDialog(doc, context){
       if (!selectedDetails) return;
       const originalLabel = okBtn.textContent;
       okBtn.disabled = true;
-      okBtn.textContent = "\u00dcbernehme...";
+      okBtn.textContent = i18n("ui_button_apply_progress");
       try{
-        const title = selectedDetails.displayName || selectedDetails.name || "Besprechung";
+        const title = selectedDetails.displayName || selectedDetails.name || i18n("ui_default_title");
         const roomUrl = normalizedBaseUrl + "/call/" + selectedDetails.token;
+        log("select dialog apply", {
+          token: shortToken(selectedDetails.token),
+          desiredLobbyState,
+          isModerator
+        });
         const initialLobbyState = selectedDetails.lobbyState === 1;
         let lobbyStateForWatcher = initialLobbyState;
 
@@ -2119,14 +3036,14 @@ async function openSelectDialog(doc, context){
         overlay.remove();
         setupLobbyWatcher(context, doc, innerDoc, selectedDetails.token, lobbyStateForWatcher);
 
-        let message = "Talk-Link eingef\u00fcgt:\n" + roomUrl;
-        if (!placed) message += "\n(Hinweis: Feld 'Ort' wurde nicht automatisch gefunden.)";
-        if (selectedDetails.hasPassword) message += "\nHinweis: Diese Unterhaltung ist passwortgeschuetzt.";
-        message += "\nLobby ist " + (lobbyStateForWatcher ? "aktiv." : "deaktiviert.");
+        const messageLines = [i18n("ui_alert_link_inserted", [roomUrl])];
+        if (!placed) messageLines.push(i18n("ui_alert_location_missing"));
+        if (selectedDetails.hasPassword) messageLines.push(i18n("ui_alert_password_protected"));
+        messageLines.push(lobbyStateForWatcher ? i18n("ui_alert_lobby_state_active") : i18n("ui_alert_lobby_state_inactive"));
         if (!isModerator){
-          message += "\n(Hinweis: Keine Lobby-Rechte, Zustand unveraendert.)";
+          messageLines.push(i18n("ui_alert_lobby_no_rights"));
         }
-        showAlert(docWin, message);
+        showAlert(docWin, messageLines.join("\n"));
       }catch(applyErr){
         const applyMsg = applyErr?.message || String(applyErr);
         const permissionProblem = applyMsg && (applyMsg.toLowerCase().includes("berechtigung") || applyMsg.includes("403"));
@@ -2136,15 +3053,15 @@ async function openSelectDialog(doc, context){
         okBtn.disabled = false;
         okBtn.textContent = originalLabel;
         const alertMsg = permissionProblem
-          ? "Lobby konnte nicht angepasst werden: Keine Moderatorrechte."
-          : "\u00dcbernahme fehlgeschlagen:\n" + applyMsg;
+          ? i18n("ui_select_apply_permission_denied")
+          : i18n("ui_select_apply_failed", [applyMsg]);
         if (permissionProblem && selectedDetails){
           const currentLobby = selectedDetails.lobbyState === 1;
           desiredLobbyState = currentLobby;
           lobbyCheckbox.checked = currentLobby;
           lobbyCheckbox.disabled = true;
-          lobbyCheckbox.title = "Keine Berechtigung zum Aendern der Lobby.";
-          moderatorInfo.textContent = "Sie sind kein Moderator dieser Unterhaltung.";
+          lobbyCheckbox.title = i18n("ui_lobby_no_permission");
+          moderatorInfo.textContent = i18n("ui_moderator_cannot_manage");
           updateLobbyInfo(selectedDetails.lobbyTimer || 0, currentLobby);
         }
         showAlert(docWin, alertMsg);
@@ -2156,7 +3073,7 @@ async function openSelectDialog(doc, context){
     }
     err(e);
     const docWin = doc?.defaultView || window;
-    showAlert(docWin, "\u00d6ffentliche Unterhaltungen konnten nicht geladen werden:\n" + (e?.message || e));
+    showAlert(docWin, i18n("ui_select_rooms_load_failed", [e?.message || e]));
   }
 }
 function findDescriptionField(candidates){
@@ -2179,6 +3096,7 @@ function findDescriptionField(candidates){
 }
 
 async function requestUtility(context, payload){
+  log("requestUtility", summarizeUtilityPayload(payload));
   const handlers = UTILITY_HANDLERS.get(context);
   if (!handlers || handlers.size === 0) return null;
   for (const fire of handlers){
@@ -2187,7 +3105,7 @@ async function requestUtility(context, payload){
       if (result !== undefined) return result;
     }catch(e){
       err(e);
-    }
+      }
   }
   return null;
 }
@@ -2262,8 +3180,8 @@ function fillIntoEvent(doc, url, password, title){
 
   const desc = findDescriptionField(candidates);
   try {
-    const lines = ["\nTalk: " + url];
-    if (password) lines.push("Passwort: " + password);
+    const lines = [i18n("ui_description_line_link", [url])];
+    if (password) lines.push(i18n("ui_description_line_password", [password]));
     const txt = lines.join("\n");
     if (desc){
       if (desc.tagName && desc.tagName.toLowerCase() === "textarea"){
@@ -2284,20 +3202,34 @@ function fillIntoEvent(doc, url, password, title){
 function inject(doc, context, label, tooltip) {
   if (!doc) return false;
   const bar = findBar(doc);
-  if (!bar) { log("no bar"); return false; }
+  if (!bar) {
+    err("toolbar injection skipped: no bar element");
+    return false;
+  }
   const btn = buildButton(doc, context, label, tooltip);
   ensureMenu(doc, context, btn);
   bar.appendChild(btn);
-  log("button injected (direct create)");
   return true;
 }
 
 function handle(win, context, label, tooltip) {
   if (!isEventDialog(win)) return;
-  try { inject(win.document, context, label, tooltip); } catch(e){ err(e); }
+  try {
+    inject(win.document, context, label, tooltip);
+  } catch(e){
+    err(e);
+    err("toolbar injection failed");
+  }
   const iframe = win.document.getElementById("calendar-item-panel-iframe");
   if (iframe) {
-    const run = () => { try { inject(iframe.contentDocument, context, label, tooltip); } catch(e){ err(e); } };
+    const run = () => {
+      try {
+        inject(iframe.contentDocument, context, label, tooltip);
+      } catch(e){
+        err(e);
+        err("toolbar injection failed");
+      }
+    };
     if (iframe.contentDocument?.readyState === "complete") run();
     iframe.addEventListener("load", run, { once: true });
   }
@@ -2308,6 +3240,8 @@ const LISTENER_NAME = "nctalk-caltoolbar";
 this.calToolbar = class extends ExtensionCommon.ExtensionAPI {
   getAPI(context) {
     LAST_CONTEXT = context;
+    resolveBrowser(context);
+    ensureDebugState(context);
     const createEvent = new ExtensionCommon.EventManager({
       context,
       name: "calToolbar.onCreateRequest",
@@ -2338,8 +3272,8 @@ this.calToolbar = class extends ExtensionCommon.ExtensionAPI {
         onLobbyUpdate: lobbyEvent.api(),
         onUtilityRequest: utilityEvent.api(),
         async init(opts) {
-          const label = (opts && opts.label) || "Talk-Link einf\u00fcgen";
-          const tooltip = (opts && opts.tooltip) || "Nextcloud Talk";
+          const label = (opts && opts.label) || i18n("ui_insert_button_label");
+          const tooltip = (opts && opts.tooltip) || i18n("ui_toolbar_tooltip");
           try {
             if (ExtensionSupport && ExtensionSupport.registerWindowListener) {
               ExtensionSupport.registerWindowListener(LISTENER_NAME, {
@@ -2365,9 +3299,9 @@ this.calToolbar = class extends ExtensionCommon.ExtensionAPI {
 
 
 async function getRoomParticipantsDirect(context, token){
-  if (!token) throw new Error("Raum-Token fehlt.");
+  if (!token) throw localizedError("error_room_token_missing");
   const { baseUrl, user, appPass } = await getCredentials(context);
-  if (!baseUrl || !user || !appPass) throw new Error("Nextcloud Zugang fehlt (URL/Nutzer/App-Pass).");
+  if (!baseUrl || !user || !appPass) throw localizedError("error_credentials_missing");
   const auth = "Basic " + btoa(user + ":" + appPass);
   const headers = { "OCS-APIRequest": "true", "Authorization": auth, "Accept":"application/json" };
   const url = baseUrl + "/ocs/v2.php/apps/spreed/api/v4/room/" + encodeURIComponent(token) + "/participants?includeStatus=true";
@@ -2381,84 +3315,41 @@ async function getRoomParticipantsDirect(context, token){
   if (!res.ok){
     const meta = data?.ocs?.meta || {};
     const detail = meta.message || raw || (res.status + " " + res.statusText);
-    throw new Error("OCS-Fehler: " + detail);
+    throw localizedError("error_ocs", [detail]);
   }
   const participants = data?.ocs?.data;
   return Array.isArray(participants) ? participants : [];
 }
 
-async function uploadRoomAvatarDirect(context, token, blob, base64Override){
-  if (!token || !blob) throw new Error("Avatar-Daten fehlen.");
-  const { baseUrl, user, appPass } = await getCredentials(context);
-  if (!baseUrl || !user || !appPass) throw new Error("Nextcloud Zugang fehlt (URL/Nutzer/App-Pass).");
-  const auth = "Basic " + btoa(user + ":" + appPass);
-  const finalMime = blob.type || "image/png";
-  const base = baseUrl.replace(/\/$/,"");
-  const base64 = base64Override || await blobToBase64(blob);
-  const dataUrl = "data:" + finalMime + ";base64," + base64;
 
-  const uploadWithFormData = async () => {
-    const headers = {
-      "OCS-APIRequest": "true",
-      "Authorization": auth,
-      "Accept": "application/json",
-      "X-Requested-With": "XMLHttpRequest"
-    };
-    const form = new FormData();
-    const payloadBlob = base64ToBlob(base64, finalMime);
-    if (!payloadBlob) throw new Error("Avatar konnte nicht vorbereitet werden.");
-    const filename = finalMime === "image/jpeg" ? "avatar.jpg" : "avatar.png";
-    form.append("file", payloadBlob, filename);
-    const url = base + "/ocs/v2.php/apps/spreed/api/v1/room/" + encodeURIComponent(token) + "/avatar";
-    const res = await fetch(url, { method:"POST", headers, body: form });
-    const raw = await res.text().catch(() => "");
-    let data = null;
-    try { data = raw ? JSON.parse(raw) : null; } catch(_){ }
-    if (!res.ok){
-      const meta = data?.ocs?.meta || {};
-      const detail = meta.message || raw || (res.status + " " + res.statusText);
-      throw new Error(detail || "Avatar-Upload fehlgeschlagen.");
-    }
-    return {
-      avatarVersion: data?.ocs?.data?.avatarVersion || data?.ocs?.data?.version || null,
-      base64,
-      mime: finalMime
-    };
-  };
 
-  const uploadWithJson = async () => {
-    const headers = {
-      "OCS-APIRequest": "true",
-      "Authorization": auth,
-      "Accept": "application/json",
-      "Content-Type": "application/json",
-      "X-Requested-With": "XMLHttpRequest"
-    };
-    const url = base + "/ocs/v2.php/apps/spreed/api/v4/room/" + encodeURIComponent(token) + "/avatar";
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ image: base64, mimetype: finalMime })
-    });
-    const raw = await res.text().catch(() => "");
-    let data = null;
-    try { data = raw ? JSON.parse(raw) : null; } catch(_){ }
-    if (!res.ok){
-      const meta = data?.ocs?.meta || {};
-      const detail = meta.message || raw || (res.status + " " + res.statusText);
-      throw new Error(detail || "Avatar-Upload fehlgeschlagen.");
-    }
-    return {
-      avatarVersion: data?.ocs?.data?.avatarVersion || data?.ocs?.data?.version || null,
-      base64,
-      mime: finalMime
-    };
-  };
 
-  try{
-    return await uploadWithFormData();
-  }catch(e){
-    err(e);
-    return await uploadWithJson();
-  }
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
