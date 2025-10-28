@@ -1,4 +1,4 @@
-{
+﻿{
   "extName": { "message": "Nextcloud Talk Direkt" },
   "extDescription": { "message": "Direkte Erstellung einer Nextcloud Talk Unterhaltung \u00fcber den Termin-Dialog." },
   "ui_button_ok": { "message": "OK" },
@@ -37,6 +37,7 @@
   "ui_moderator_transfer_failed": { "message": "Moderator konnte nicht \u00fcbertragen werden." },
   "ui_moderator_transfer_failed_with_reason": { "message": "Moderator konnte nicht \u00fcbertragen werden:\n$1" },
   "ui_alert_title": { "message": "Nextcloud Talk" },
+  "ui_alert_room_created": { "message": "Talk Raum \"$1\" wurde erstellt." },
   "ui_alert_link_inserted": { "message": "Talk-Link eingef\u00fcgt:\n$1" },
   "ui_alert_location_missing": { "message": "(Hinweis: Feld 'Ort' wurde nicht automatisch gefunden.)" },
   "ui_alert_event_fallback": { "message": "Hinweis: Server unterst\u00fctzt Event-Konversationen nicht. Es wurde ein Standard-Raum erstellt." },
@@ -46,39 +47,6 @@
   "ui_alert_delegation_done": { "message": "Moderator \u00fcbertragen an: $1." },
   "ui_alert_delegation_removed": { "message": "Sie wurden aus der Unterhaltung entfernt." },
   "ui_alert_password_protected": { "message": "Hinweis: Diese Unterhaltung ist passwortgesch\u00fctzt." },
-  "ui_alert_lobby_state_active": { "message": "Lobby ist aktiv." },
-  "ui_alert_lobby_state_inactive": { "message": "Lobby ist deaktiviert." },
-  "ui_alert_lobby_no_rights": { "message": "(Hinweis: Keine Lobby-Rechte, Zustand unver\u00e4ndert.)" },
-  "ui_select_heading": { "message": "\u00d6ffentliche Unterhaltung ausw\u00e4hlen" },
-  "ui_select_search_placeholder": { "message": "Suche" },
-  "ui_select_no_selection": { "message": "Keine Unterhaltung ausgew\u00e4hlt" },
-  "ui_select_lobby_toggle": { "message": "Lobby einschalten (Startzeit aus Termin)" },
-  "ui_select_missing_base_url": { "message": "Bitte hinterlegen Sie die Nextcloud URL in den Add-on-Optionen." },
-  "ui_select_status_loading": { "message": "Lade..." },
-  "ui_select_status_none": { "message": "Keine Unterhaltungen gefunden." },
-  "ui_select_status_single": { "message": "1 Unterhaltung gefunden." },
-  "ui_select_status_many": { "message": "$1 Unterhaltungen gefunden." },
-  "ui_select_status_error": { "message": "Fehler: $1" },
-  "ui_badge_password_required": { "message": "Passwort erforderlich" },
-  "ui_badge_listed": { "message": "Oeffentlich gelistet" },
-  "ui_badge_owned": { "message": "Eigene Teilnahme" },
-  "ui_badge_guests_allowed": { "message": "Gaeste erlaubt" },
-  "ui_badge_guests_forbidden": { "message": "Keine Gaeste erlaubt" },
-  "ui_password_info_yes": { "message": "Passwortschutz aktiv." },
-  "ui_password_info_no": { "message": "Kein Passwort gesetzt." },
-  "ui_lobby_loading_details": { "message": "Lade Raumdetails..." },
-  "ui_lobby_disabled": { "message": "Lobby deaktiviert." },
-  "ui_lobby_active_with_time": { "message": "Lobby aktiv (Start: $1)" },
-  "ui_lobby_active_without_time": { "message": "Lobby aktiv (keine Startzeit gesetzt)." },
-  "ui_lobby_fetching_status": { "message": "Lobby-Status wird ermittelt..." },
-  "ui_details_error": { "message": "Details konnten nicht geladen werden." },
-  "ui_moderator_not_participant": { "message": "Keine Teilnahme an dieser Unterhaltung (nur Anzeige)." },
-  "ui_moderator_can_manage": { "message": "Sie k\u00f6nnen die Lobby verwalten." },
-  "ui_moderator_cannot_manage": { "message": "Sie sind kein Moderator dieser Unterhaltung." },
-  "ui_lobby_no_permission": { "message": "Keine Berechtigung zum \u00c4ndern der Lobby." },
-  "ui_select_apply_permission_denied": { "message": "Lobby konnte nicht angepasst werden: Keine Moderatorrechte." },
-  "ui_select_apply_failed": { "message": "\u00dcbernahme fehlgeschlagen:\n$1" },
-  "ui_select_rooms_load_failed": { "message": "\u00d6ffentliche Unterhaltungen konnten nicht geladen werden:\n$1" },
   "ui_prompt_base_url": { "message": "Nextcloud Basis-URL (z.B. https://cloud.example.com):" },
   "ui_prompt_title": { "message": "Titel f\u00fcr neue \u00f6ffentliche Unterhaltung:" },
   "ui_default_title": { "message": "Besprechung" },
@@ -106,7 +74,6 @@
   "error_lobby_no_permission": { "message": "Keine Berechtigung zum Aendern der Lobby (HTTP 403)." },
   "error_lobby_update_failed": { "message": "Lobby-Update fehlgeschlagen (HTTP $1)." },
   "error_ocs": { "message": "OCS-Fehler: $1" },
-  "error_room_details_missing": { "message": "Raumdetails fehlen im OCS-Response." },
   "error_token_or_actor_missing": { "message": "Raum-Token oder Teilnehmer-ID fehlt." },
   "error_participant_add_failed": { "message": "Teilnehmer konnte nicht hinzugefuegt werden: $1" },
   "error_moderator_id_missing": { "message": "Moderator-ID fehlt." },
@@ -138,6 +105,8 @@
   "options_test_failed_auth": { "message": "Benutzername oder App-Passwort ung\u00fcltig." },
   "options_test_missing": { "message": "Bitte zuerst URL, Benutzername und App-Passwort eingeben." }
 }
+
+
 
 
 

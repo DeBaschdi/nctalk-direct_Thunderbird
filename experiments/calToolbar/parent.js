@@ -1,3 +1,8 @@
+﻿/**
+ * Copyright (c) 2025 Bastian Kleinschmidt
+ * Licensed under the GNU Affero General Public License v3.0.
+ * See LICENSE.txt for details.
+ */
 'use strict';
 /**
  * Frontend-Teil der Erweiterung: injiziert den Toolbar-Button,
@@ -34,7 +39,7 @@ function getHiddenDOMWindow(){
 }
 
 /**
- * Stellt sicher, dass globale Browser-APIs (Image, Blob, fetch, …) im Kontext verfügbar sind.
+ * Stellt sicher, dass globale Browser-APIs (Image, Blob, fetch etc.) im Kontext verfügbar sind.
  * Thunderbird deaktiviert diese teilweise im Add-on-Prozess.
  */
 function ensureBrowserGlobals(){
@@ -96,6 +101,11 @@ function shortString(value, max = 20){
   return str.slice(0, max) + "...";
 }
 
+/**
+ * Erstellt eine Log-Zusammenfassung für den Create-Payload.
+ * @param {object} payload
+ * @returns {object}
+ */
 function describeCreatePayload(payload){
   if (!payload || typeof payload !== "object") return {};
   return {
@@ -111,6 +121,11 @@ function describeCreatePayload(payload){
   };
 }
 
+/**
+ * Normalisiert Utility-Requests für Debug-Logs.
+ * @param {object} payload
+ * @returns {object}
+ */
 function summarizeUtilityPayload(payload){
   if (!payload || typeof payload !== "object") return {};
   return {
@@ -159,6 +174,7 @@ const I18N_FALLBACKS = {
   ui_moderator_transfer_failed: "Moderator konnte nicht uebertragen werden.",
   ui_moderator_transfer_failed_with_reason: "Moderator konnte nicht uebertragen werden:\n$1",
   ui_alert_title: "Nextcloud Talk",
+  ui_alert_room_created: "Talk Raum \"$1\" wurde erstellt.",
   ui_alert_link_inserted: "Talk-Link eingefuegt:\n$1",
   ui_alert_location_missing: "(Hinweis: Feld 'Ort' wurde nicht automatisch gefunden.)",
   ui_alert_event_fallback: "Hinweis: Server unterstuetzt Event-Konversationen nicht. Es wurde ein Standard-Raum erstellt.",
@@ -168,39 +184,6 @@ const I18N_FALLBACKS = {
   ui_alert_delegation_done: "Moderator uebertragen an: $1.",
   ui_alert_delegation_removed: "Sie wurden aus der Unterhaltung entfernt.",
   ui_alert_password_protected: "Hinweis: Diese Unterhaltung ist passwortgeschuetzt.",
-  ui_alert_lobby_state_active: "Lobby ist aktiv.",
-  ui_alert_lobby_state_inactive: "Lobby ist deaktiviert.",
-  ui_alert_lobby_no_rights: "(Hinweis: Keine Lobby-Rechte, Zustand unveraendert.)",
-  ui_select_heading: "\u00d6ffentliche Unterhaltung auswaehlen",
-  ui_select_search_placeholder: "Suche",
-  ui_select_no_selection: "Keine Unterhaltung ausgewaehlt",
-  ui_select_lobby_toggle: "Lobby einschalten (Startzeit aus Termin)",
-  ui_select_missing_base_url: "Bitte hinterlegen Sie die Nextcloud URL in den Add-on-Optionen.",
-  ui_select_status_loading: "Lade...",
-  ui_select_status_none: "Keine Unterhaltungen gefunden.",
-  ui_select_status_single: "1 Unterhaltung gefunden.",
-  ui_select_status_many: "$1 Unterhaltungen gefunden.",
-  ui_select_status_error: "Fehler: $1",
-  ui_badge_password_required: "Passwort erforderlich",
-  ui_badge_listed: "Oeffentlich gelistet",
-  ui_badge_owned: "Eigene Teilnahme",
-  ui_badge_guests_allowed: "Gaeste erlaubt",
-  ui_badge_guests_forbidden: "Keine Gaeste erlaubt",
-  ui_password_info_yes: "Passwortschutz aktiv.",
-  ui_password_info_no: "Kein Passwort gesetzt.",
-  ui_lobby_loading_details: "Lade Raumdetails...",
-  ui_lobby_disabled: "Lobby deaktiviert.",
-  ui_lobby_active_with_time: "Lobby aktiv (Start: $1)",
-  ui_lobby_active_without_time: "Lobby aktiv (keine Startzeit gesetzt).",
-  ui_lobby_fetching_status: "Lobby-Status wird ermittelt...",
-  ui_details_error: "Details konnten nicht geladen werden.",
-  ui_moderator_not_participant: "Keine Teilnahme an dieser Unterhaltung (nur Anzeige).",
-  ui_moderator_can_manage: "Sie koennen die Lobby verwalten.",
-  ui_moderator_cannot_manage: "Sie sind kein Moderator dieser Unterhaltung.",
-  ui_lobby_no_permission: "Keine Berechtigung zum Aendern der Lobby.",
-  ui_select_apply_permission_denied: "Lobby konnte nicht angepasst werden: Keine Moderatorrechte.",
-  ui_select_apply_failed: "\u00dcbernahme fehlgeschlagen:\n$1",
-  ui_select_rooms_load_failed: "\u00d6ffentliche Unterhaltungen konnten nicht geladen werden:\n$1",
   ui_prompt_base_url: "Nextcloud Basis-URL (z.B. https://cloud.example.com):",
   ui_prompt_title: "Titel fuer neue oeffentliche Unterhaltung:",
   ui_default_title: "Besprechung",
@@ -213,7 +196,6 @@ const I18N_FALLBACKS = {
   error_credentials_missing: "Nextcloud Zugang fehlt (URL/Nutzer/App-Pass).",
   error_ocs: "OCS-Fehler: $1",
   error_room_token_missing: "Raum-Token fehlt.",
-  error_room_details_missing: "Raumdetails fehlen im Response.",
   error_lobby_update_failed: "Lobby-Update fehlgeschlagen (HTTP $1)."
 };
 
@@ -1067,7 +1049,12 @@ function hashStringToHex(value){
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-function buildEventObjectMetadata(doc, { title, startTimestamp } = {}){
+function buildEventObjectMetadata(doc, { title, startTimestamp, stopTimestamp } = {}){
+  const toUnixSeconds = (value) => {
+    if (typeof value !== "number" || !Number.isFinite(value)) return null;
+    if (value > 1e12) return Math.floor(value / 1000);
+    return Math.floor(value);
+  };
   const candidates = [];
   const pushCandidate = (value) => {
     if (!value) return;
@@ -1084,16 +1071,48 @@ function buildEventObjectMetadata(doc, { title, startTimestamp } = {}){
   if (item?.icalComponent){
     try{ pushCandidate(item.icalComponent.uid); }catch(_){}
   }
-  let objectId = candidates.find(Boolean);
+  const normalizeObjectId = (raw) => {
+    if (!raw) return null;
+    const str = String(raw).trim();
+    if (!str) return null;
+    if (/^\d+#\d+$/.test(str)) return str;
+    return null;
+  };
+  const startSeconds = toUnixSeconds(startTimestamp);
+  let stopSeconds = toUnixSeconds(stopTimestamp);
+  if (stopSeconds == null && startSeconds != null){
+    stopSeconds = startSeconds;
+  }
+  if (startSeconds != null && stopSeconds != null && stopSeconds < startSeconds){
+    stopSeconds = startSeconds;
+  }
+  let objectId = null;
+  for (const candidate of candidates){
+    const valid = normalizeObjectId(candidate);
+    if (valid){
+      objectId = valid;
+      break;
+    }
+  }
   let fallback = false;
   if (!objectId){
-    fallback = true;
-    const seedParts = [
-      startTimestamp != null ? String(startTimestamp) : "",
-      title || "",
-      Date.now().toString()
-    ];
-    objectId = "tb-" + hashStringToHex(seedParts.join("|"));
+    if (startSeconds != null || stopSeconds != null){
+      const startPart = startSeconds != null ? String(startSeconds) : (stopSeconds != null ? String(stopSeconds) : "");
+      const stopPart = stopSeconds != null ? String(stopSeconds) : startPart;
+      if (startPart && stopPart){
+        objectId = startPart + "#" + stopPart;
+      }
+    }
+    if (!objectId){
+      fallback = true;
+      const seedParts = [
+        startTimestamp != null ? String(startTimestamp) : "",
+        stopTimestamp != null ? String(stopTimestamp) : "",
+        title || "",
+        Date.now().toString()
+      ];
+      objectId = "tb-" + hashStringToHex(seedParts.join("|"));
+    }
   }
   return {
     objectType: "event",
@@ -1104,6 +1123,10 @@ function buildEventObjectMetadata(doc, { title, startTimestamp } = {}){
 
 const PENDING_DELEGATION_KEY = "_nctalkPendingModerator";
 
+/**
+ * Speichert geplante Moderations-Delegation im Fensterkontext,
+ * damit sie nach Lobbysynchronisierung erfolgen kann.
+ */
 function queuePendingModerator(win, data){
   if (!win) return;
   if (!data || !data.token || !data.delegateId){
@@ -1126,6 +1149,10 @@ function queuePendingModerator(win, data){
   });
 }
 
+/**
+ * Liest eine zuvor abgelegte Pending-Delegation.
+ * @returns {null|{token:string,delegateId:string,displayName:string,processed:boolean}}
+ */
 function getPendingModerator(win){
   if (!win) return null;
   const pending = win[PENDING_DELEGATION_KEY];
@@ -1133,6 +1160,9 @@ function getPendingModerator(win){
   return pending;
 }
 
+/**
+ * Entfernt eine Pending-Delegation und schreibt Debug-Infos ins Log.
+ */
 function clearPendingModerator(win){
   if (win && win[PENDING_DELEGATION_KEY]){
     log("pending delegation cleared", {
@@ -1142,6 +1172,143 @@ function clearPendingModerator(win){
     delete win[PENDING_DELEGATION_KEY];
   }
 }
+const ROOM_CLEANUP_KEY = "_nctalkRoomCleanup";
+
+function getRoomCleanupState(win){
+  if (!win) return null;
+  let state = win[ROOM_CLEANUP_KEY];
+  if (!state){
+    state = { token:null, context:null, info:null, cleanup:[], deleting:false };
+    win[ROOM_CLEANUP_KEY] = state;
+  }
+  return state;
+}
+
+function cleanupRoomCleanupState(state){
+  if (!state || !Array.isArray(state.cleanup)) return;
+  while (state.cleanup.length){
+    const fn = state.cleanup.pop();
+    try{ fn(); }catch(_){}
+  }
+}
+
+function resetRoomCleanupState(state){
+  if (!state) return;
+  cleanupRoomCleanupState(state);
+  state.token = null;
+  state.context = null;
+  state.info = null;
+  state.deleting = false;
+}
+
+function triggerRoomCleanupDelete(state, reason){
+  if (!state || state.deleting) return;
+  const token = state.token;
+  const context = state.context;
+  if (!token || !context) return;
+  state.deleting = true;
+  cleanupRoomCleanupState(state);
+  state.token = null;
+  const info = state.info || {};
+  state.info = null;
+  const short = shortToken(token);
+  log("room cleanup delete request", {
+    token: short,
+    reason: reason || "",
+    fallback: !!info.fallback,
+    eventConversation: !!info.eventConversation
+  });
+  (async () => {
+    try{
+      const result = await requestUtility(context, { type: "deleteRoom", token });
+      if (!result || !result.ok){
+        log("room cleanup delete failed", {
+          token: short,
+          reason: reason || "",
+          error: result?.error || ""
+        });
+      } else {
+        log("room cleanup delete success", { token: short, reason: reason || "" });
+      }
+    }catch(e){
+      err(e);
+      err("room cleanup delete threw");
+    }finally{
+      state.deleting = false;
+      state.context = null;
+    }
+  })();
+}
+
+/**
+ * Registriert einen Cleanup-Hook, der frisch erstellte Räume wieder löscht,
+ * falls der Termin-Dialog ohne Speichern verlassen wird.
+ */
+function registerRoomCleanup(win, context, token, info = {}){
+  if (!win || !context || !token) return;
+  const state = getRoomCleanupState(win);
+  if (!state) return;
+  if (state.token && state.token !== token){
+    triggerRoomCleanupDelete(state, "superseded");
+  } else {
+    cleanupRoomCleanupState(state);
+  }
+  state.context = context;
+  state.token = token;
+  state.info = info || {};
+  state.deleting = false;
+
+  const addListener = (target, type, handler, options) => {
+    if (!target || typeof target.addEventListener !== "function") return;
+    target.addEventListener(type, handler, options);
+    state.cleanup.push(() => {
+      try{ target.removeEventListener(type, handler, options); }catch(_){}
+    });
+  };
+
+  const markPersisted = () => {
+    if (!state.token) return;
+    log("room cleanup persisted", { token: shortToken(state.token) });
+    resetRoomCleanupState(state);
+  };
+
+  const drop = (reason) => triggerRoomCleanupDelete(state, reason);
+
+  addListener(win, "dialogaccept", markPersisted, true);
+  addListener(win, "dialogextra1", markPersisted, true);
+  addListener(win, "dialogcancel", () => drop("dialogcancel"), true);
+  addListener(win, "dialogextra2", () => drop("dialogextra2"), true);
+  addListener(win, "beforeunload", () => drop("beforeunload"), true);
+  addListener(win, "unload", () => drop("unload"), true);
+  addListener(win, "close", () => drop("close"), true);
+
+  const doc = win.document;
+  if (doc){
+    const deleteSelectors = [
+      "#button-delete",
+      "#calendar-delete-button",
+      "#cmd_delete",
+      "#cmd_deleteItem"
+    ];
+    for (const sel of deleteSelectors){
+      const el = doc.querySelector(sel);
+      if (!el) continue;
+      const type = el.tagName && el.tagName.toLowerCase() === "toolbarbutton" ? "command" : "click";
+      const handler = () => drop("delete:" + sel);
+      el.addEventListener(type, handler, true);
+      state.cleanup.push(() => {
+        try{ el.removeEventListener(type, handler, true); }catch(_){}
+      });
+    }
+  }
+
+  log("room cleanup armed", {
+    token: shortToken(token),
+    objectId: info?.objectId ? shortString(info.objectId, 12) : null,
+    eventConversation: !!info.eventConversation,
+    fallback: !!info.fallback
+  });
+}
 
 /**
  * Beobachtet Terminänderungen (Startzeit, Buttons) und synchronisiert die Lobby.
@@ -1150,6 +1317,9 @@ function clearPendingModerator(win){
  * @param {Document} innerDoc - Optionales iframe-Dokument.
  * @param {string} token - Talk-Raum-Token.
  * @param {boolean} enableLobby - Soll die Lobby aktiv bleiben?
+ */
+/**
+ * Überwacht Terminänderungen, um die Lobby-Startzeit aktuell zu halten.
  */
 function setupLobbyWatcher(context, rootDoc, innerDoc, token, enableLobby){
   try{
@@ -1364,47 +1534,6 @@ async function sendRuntimeMessage(context, type, payload){
   }
 }
 
-async function listPublicRoomsDirect(context, searchTerm = ""){
-  const { baseUrl, user, appPass } = await getCredentials(context);
-  if (!baseUrl || !user || !appPass) throw localizedError("error_credentials_missing");
-  const auth = "Basic " + btoa(user + ":" + appPass);
-  const headers = { "OCS-APIRequest": "true", "Authorization": auth, "Accept":"application/json" };
-  const url = baseUrl + "/ocs/v2.php/apps/spreed/api/v4/listed-room?searchTerm=" + encodeURIComponent(searchTerm || "");
-  const res = await fetch(url, { method:"GET", headers });
-  const raw = await res.text();
-  let data = null;
-  try { data = raw ? JSON.parse(raw) : null; } catch(_){}
-  if (!res.ok){
-    const meta = data?.ocs?.meta || {};
-    const detail = meta.message || raw || (res.status + " " + res.statusText);
-    throw localizedError("error_ocs", [detail]);
-  }
-  const rooms = data?.ocs?.data;
-  return Array.isArray(rooms) ? rooms : [];
-}
-
-async function getRoomInfoDirect(context, token){
-  if (!token) throw localizedError("error_room_token_missing");
-  const { baseUrl, user, appPass } = await getCredentials(context);
-  if (!baseUrl || !user || !appPass) throw localizedError("error_credentials_missing");
-  const auth = "Basic " + btoa(user + ":" + appPass);
-  const headers = { "OCS-APIRequest": "true", "Authorization": auth, "Accept":"application/json" };
-  const url = baseUrl + "/ocs/v2.php/apps/spreed/api/v4/room/" + encodeURIComponent(token);
-  const res = await fetch(url, { method:"GET", headers });
-  const raw = await res.text();
-  let data = null;
-  try { data = raw ? JSON.parse(raw) : null; } catch(_){}
-  if (!res.ok){
-    const meta = data?.ocs?.meta || {};
-    const detail = meta.message || raw || (res.status + " " + res.statusText);
-    throw localizedError("error_ocs", [detail]);
-  }
-  const room = data?.ocs?.data;
-  if (!room || typeof room !== "object"){
-    throw localizedError("error_room_details_missing");
-  }
-  return room;
-}
 
 async function updateLobbyDirect(context, { token, enableLobby, startTimestamp } = {}){
   if (!token) throw localizedError("error_room_token_missing");
@@ -1424,71 +1553,6 @@ async function updateLobbyDirect(context, { token, enableLobby, startTimestamp }
   if (!res.ok){
     throw localizedError("error_lobby_update_failed", [res.status]);
   }
-}
-
-async function fetchListedRooms(context, searchTerm = ""){
-  log("fetchListedRooms", { searchTerm });
-  try{
-    const res = await requestUtility(context, { type: "listPublicRooms", searchTerm });
-    if (res){
-      if (res.ok){
-        const rooms = Array.isArray(res.rooms) ? res.rooms : [];
-        log("fetchListedRooms response", { source: "utility", count: rooms.length });
-        return rooms;
-      }
-      throw new Error(res.error || "Liste der Unterhaltungen nicht verf\\u00fcgbar.");
-    }
-  }catch(e){
-      err(e);
-      }
-  try{
-    const res = await sendRuntimeMessage(context, "talkMenu:listPublicRooms", { searchTerm });
-    if (res){
-      if (res.ok){
-        const rooms = Array.isArray(res.rooms) ? res.rooms : [];
-        log("fetchListedRooms response", { source: "runtime", count: rooms.length });
-        return rooms;
-      }
-      throw new Error(res.error || "Liste der Unterhaltungen nicht verfuegbar.");
-    }
-  }catch(e){
-      err(e);
-      }
-  const directRooms = await listPublicRoomsDirect(context, searchTerm);
-  log("fetchListedRooms response", { source: "direct", count: Array.isArray(directRooms) ? directRooms.length : 0 });
-  return directRooms;
-}
-
-async function fetchRoomDetails(context, token){
-  log("fetchRoomDetails", { token: shortToken(token) });
-  if (!token) throw localizedError("error_room_token_missing");
-  try{
-    const res = await requestUtility(context, { type: "getRoomInfo", token });
-    if (res){
-      if (res.ok && res.room){
-        log("fetchRoomDetails response", { source: "utility", success: true });
-        return res.room;
-      }
-      throw new Error(res.error || "Raumdetails konnten nicht geladen werden.");
-    }
-  }catch(e){
-      err(e);
-      }
-  try{
-    const res = await sendRuntimeMessage(context, "talkMenu:getRoomInfo", { token });
-    if (res){
-      if (res.ok && res.room){
-        log("fetchRoomDetails response", { source: "runtime", success: true });
-        return res.room;
-      }
-      throw new Error(res.error || "Raumdetails konnten nicht geladen werden.");
-    }
-  }catch(e){
-      err(e);
-      }
-  const directRoom = await getRoomInfoDirect(context, token);
-  log("fetchRoomDetails response", { source: "direct", success: !!directRoom });
-  return directRoom;
 }
 
 function collectEventDocs(doc){
@@ -1654,19 +1718,83 @@ async function requestCreateFromExtension(context, payload){
   return null;
 }
 
-async function fetchRoomParticipants(context, token){
-  log("fetchRoomParticipants", { token: shortToken(token) });
+function extractStopTimestamp(doc){
   try{
-    const res = await requestUtility(context, { type: "getRoomParticipants", token });
-    if (res){
-      if (res.ok) return Array.isArray(res.participants) ? res.participants : [];
-      throw new Error(res.error || "Teilnehmer konnten nicht geladen werden.");
-    }
-  }catch(e){
-      err(e);
+    const docs = collectEventDocs(doc);
+    for (const d of docs){
+      const picker = d.querySelector && (d.querySelector("datetimepicker#event-endtime") || d.querySelector("datetimepicker#item-endtime"));
+      if (picker){
+        try{
+          let value = picker.value || (picker.getAttribute && picker.getAttribute("value"));
+          if (!value && "valueAsDate" in picker) value = picker.valueAsDate;
+          if (value){
+            if (value instanceof Date || (typeof value === "object" && typeof value.getTime === "function")){
+              const ts = value.getTime();
+              if (!Number.isNaN(ts)) return Math.floor(ts / 1000);
+            } else if (typeof value === "string"){
+              const parsed = Date.parse(value);
+              if (!Number.isNaN(parsed)) return Math.floor(parsed / 1000);
+            }
+          }
+        }catch(_){}
       }
-  return await getRoomParticipantsDirect(context, token);
+    }
+  }catch(_){}
+  try{
+    const docs = collectEventDocs(doc);
+    const selectors = ['input#event-endtime', 'input#item-endtime', 'input[data-type="end-time"]', 'input.end-time'];
+    for (const d of docs){
+      for (const sel of selectors){
+        const el = d.querySelector && d.querySelector(sel);
+        if (el && el.value){
+          let dateInput = d.querySelector('input#event-enddate') || d.querySelector('input#item-enddate') || d.querySelector('input[data-type="end-date"]') || d.querySelector('input.end-date');
+          if (!dateInput){
+            const allDates = Array.from(d.querySelectorAll('input[type="date"]'));
+            if (allDates.length){
+              dateInput = allDates[allDates.length - 1];
+            }
+          }
+          let dateStr = dateInput && dateInput.value;
+          const timeStr = el.value;
+          if (dateStr && timeStr){
+            const combined = new Date(dateStr + "T" + timeStr);
+            if (!isNaN(combined.getTime())) return Math.floor(combined.getTime() / 1000);
+          }
+        }
+      }
+    }
+  }catch(_){}
+  try{
+    const item = getCalendarItem(doc);
+    const end = item?.endDate || item?.dueDate || item?.untilDate;
+    if (end){
+      const jsDate = end.jsDate || end.getInTimezone?.(end.timezone || end.timezoneProvider?.tzid || "UTC")?.jsDate;
+      if (jsDate && jsDate.getTime){
+        const t = jsDate.getTime();
+        if (!Number.isNaN(t)) return Math.floor(t / 1000);
+      }
+      if ("nativeTime" in end && typeof end.nativeTime === "number"){
+        const native = end.nativeTime;
+        if (native > 1e12) return Math.floor(native / 1e6);
+        if (native > 1e9) return Math.floor(native / 1000);
+        return Math.floor(native);
+      }
+    }
+  }catch(_){}
+  try{
+    const win = doc.defaultView || window;
+    const gEnd = win?.gEndDateTime;
+    if (gEnd && typeof gEnd === "object"){
+      const jsDate = gEnd.jsDate || gEnd.getInTimezone?.("UTC")?.jsDate;
+      if (jsDate && jsDate.getTime){
+        const t = jsDate.getTime();
+        if (!Number.isNaN(t)) return Math.floor(t / 1000);
+      }
+    }
+  }catch(_){}
+  return null;
 }
+
 
 async function requestLobbyUpdate(context, payload){
   log("requestLobbyUpdate", summarizeUtilityPayload(payload));
@@ -2491,9 +2619,10 @@ async function openCreateDialog(doc, context){
       const descriptionText = extractDescriptionText(innerDoc);
 
       const startTs = extractStartTimestamp(innerDoc);
+      const stopTs = extractStopTimestamp(innerDoc);
       const delegateId = delegateInput.value.trim();
       const useEventConversation = modeEventRadio.checked && !modeEventRadio.disabled;
-      const eventMetadata = useEventConversation ? buildEventObjectMetadata(innerDoc, { title, startTimestamp: startTs }) : null;
+      const eventMetadata = useEventConversation ? buildEventObjectMetadata(innerDoc, { title, startTimestamp: startTs, stopTimestamp: stopTs }) : null;
 
       const createPayload = {
         title,
@@ -2581,7 +2710,8 @@ async function openCreateDialog(doc, context){
       if (useEventConversation && response.fallback){
         applyEventModeSupport({ supported:false, reason: response.reason || "" });
       }
-      const alertLines = [i18n("ui_alert_link_inserted", [response.url])];
+      const alertLines = [i18n("ui_alert_room_created", [title])];
+      alertLines.push(i18n("ui_alert_link_inserted", [response.url]));
       if (!placed) alertLines.push(i18n("ui_alert_location_missing"));
       if (response.fallback) {
         if (useEventConversation){
@@ -2600,6 +2730,13 @@ async function openCreateDialog(doc, context){
         }
       }
       showAlert(docWin, alertLines.join("\n"));
+      if (response.token){
+        registerRoomCleanup(docWin, context, response.token, {
+          objectId: eventMetadata?.objectId || null,
+          eventConversation: useEventConversation,
+          fallback: !!response.fallback
+        });
+      }
       const watcherAllowed = enableLobby && response.token;
       if (watcherAllowed){
         setupLobbyWatcher(context, doc, innerDoc, response.token, true);
@@ -2620,462 +2757,15 @@ async function openCreateDialog(doc, context){
     const token = randToken(10);
     const url = String(base).replace(/\/$/,"") + "/call/" + token;
     const ok = fillIntoEvent(doc, url, null);
-    const fallbackLines = [i18n("ui_alert_link_inserted", [url])];
+    const fallbackLines = [
+      i18n("ui_alert_room_created", [title || i18n("ui_default_title")])
+    ];
+    fallbackLines.push(i18n("ui_alert_link_inserted", [url]));
     if (!ok) fallbackLines.push(i18n("ui_alert_location_missing"));
     showAlert(docWin, fallbackLines.join("\n"));
   }
 }
-async function openSelectDialog(doc, context){
-  let overlay = null;
-  try{
-    const docWin = doc.defaultView || window;
-    log("openSelectDialog", { url: doc?.URL || "" });
-    overlay = doc.createElement("div");
-    Object.assign(overlay.style,{position:"fixed",inset:"0",background:"rgba(0,0,0,.25)",zIndex:"2147483646"});
-    const panel = doc.createElement("div");
-    Object.assign(panel.style,{position:"fixed",top:"15%",left:"50%",transform:"translateX(-50%)",
-      background:"var(--arrowpanel-background,#fff)",border:"1px solid var(--arrowpanel-border-color,#c0c0c0)",
-      borderRadius:"8px",boxShadow:"0 10px 30px rgba(0,0,0,.25)",minWidth:"520px",maxWidth:"640px",
-      maxHeight:"80vh",padding:"16px",zIndex:"2147483647",display:"flex",flexDirection:"column",overflowY:"auto",overflowX:"hidden"});
-    overlay.appendChild(panel);
-    (doc.body || doc.documentElement).appendChild(overlay);
 
-    const heading = doc.createElement("h2");
-    heading.textContent = i18n("ui_select_heading");
-    Object.assign(heading.style,{margin:"0 0 10px",font:"600 16px system-ui"});
-    panel.appendChild(heading);
-
-    const searchBox = doc.createElement("div");
-    Object.assign(searchBox.style,{marginBottom:"8px"});
-    const searchInput = doc.createElement("input");
-    Object.assign(searchInput,{type:"search",placeholder: i18n("ui_select_search_placeholder")});
-    Object.assign(searchInput.style,{width:"100%",padding:"8px 10px",border:"1px solid var(--arrowpanel-border-color,#c0c0c0)",borderRadius:"6px"});
-    searchBox.appendChild(searchInput);
-    panel.appendChild(searchBox);
-
-    const statusLabel = doc.createElement("div");
-    Object.assign(statusLabel.style,{fontSize:"12px",opacity:"0.8",minHeight:"16px"});
-    panel.appendChild(statusLabel);
-
-    const listContainer = doc.createElement("div");
-    Object.assign(listContainer.style,{flex:"1 1 auto",overflowY:"auto",border:"1px solid var(--arrowpanel-border-color,#c0c0c0)",
-      borderRadius:"6px",padding:"4px",background:"rgba(0,0,0,0.02)"});
-    panel.appendChild(listContainer);
-
-    const detailBox = doc.createElement("div");
-    Object.assign(detailBox.style,{marginTop:"12px",padding:"12px",border:"1px solid var(--arrowpanel-border-color,#c0c0c0)",
-      borderRadius:"6px",background:"rgba(0,0,0,0.03)",display:"flex",flexDirection:"column",gap:"6px"});
-    panel.appendChild(detailBox);
-
-    const detailHeader = doc.createElement("div");
-    Object.assign(detailHeader.style,{display:"flex",flexDirection:"column",gap:"4px"});
-    detailBox.appendChild(detailHeader);
-
-    const detailTitle = doc.createElement("h3");
-    detailTitle.textContent = i18n("ui_select_no_selection");
-    Object.assign(detailTitle.style,{margin:"0",font:"600 15px system-ui"});
-    detailHeader.appendChild(detailTitle);
-
-    const detailMeta = doc.createElement("div");
-    Object.assign(detailMeta.style,{fontSize:"11px",opacity:"0.75"});
-    detailHeader.appendChild(detailMeta);
-
-    const linkRow = doc.createElement("div");
-    Object.assign(linkRow.style,{fontSize:"12px",wordBreak:"break-all"});
-    detailBox.appendChild(linkRow);
-
-    const descLabel = doc.createElement("div");
-    Object.assign(descLabel.style,{fontSize:"12px",whiteSpace:"pre-wrap"});
-    detailBox.appendChild(descLabel);
-
-    const passwordInfo = doc.createElement("div");
-    Object.assign(passwordInfo.style,{fontSize:"12px",opacity:"0.8"});
-    detailBox.appendChild(passwordInfo);
-
-    const lobbyRow = doc.createElement("label");
-    Object.assign(lobbyRow.style,{display:"flex",alignItems:"center",gap:"6px",fontSize:"12px",userSelect:"none"});
-    const lobbyCheckbox = doc.createElement("input");
-    lobbyCheckbox.type = "checkbox";
-    lobbyCheckbox.disabled = true;
-    lobbyRow.appendChild(lobbyCheckbox);
-    lobbyRow.appendChild(doc.createTextNode(" " + i18n("ui_select_lobby_toggle")));
-    detailBox.appendChild(lobbyRow);
-
-    const lobbyInfo = doc.createElement("div");
-    Object.assign(lobbyInfo.style,{fontSize:"12px",opacity:"0.8"});
-    detailBox.appendChild(lobbyInfo);
-
-    const moderatorInfo = doc.createElement("div");
-    Object.assign(moderatorInfo.style,{fontSize:"11px",opacity:"0.7"});
-    detailBox.appendChild(moderatorInfo);
-
-    const creds = await getCredentials(context);
-    const currentUser = (creds.user || "").trim();
-    const baseUrl = creds.baseUrl || await getBaseUrl(context);
-    if (!baseUrl){
-      overlay.remove();
-      showAlert(docWin, i18n("ui_select_missing_base_url"));
-      return;
-    }
-    const normalizedBaseUrl = String(baseUrl).replace(/\/$/,"");
-
-    const buttons = doc.createElement("div");
-    Object.assign(buttons.style,{display:"flex",justifyContent:"flex-end",gap:"8px",marginTop:"14px"});
-    panel.appendChild(buttons);
-
-    const cancelBtn = doc.createElement("button");
-    cancelBtn.textContent = i18n("ui_button_cancel");
-    const okBtn = doc.createElement("button");
-    okBtn.textContent = i18n("ui_button_apply");
-    okBtn.disabled = true;
-
-    buttons.appendChild(cancelBtn);
-    buttons.appendChild(okBtn);
-
-    const innerDoc = (doc.getElementById && doc.getElementById("calendar-item-panel-iframe") && doc.getElementById("calendar-item-panel-iframe").contentDocument) || doc;
-    const winObj = doc.defaultView || window;
-
-    let rooms = [];
-    let activeItem = null;
-    let selectedDetails = null;
-    let desiredLobbyState = false;
-    let detailRequestToken = null;
-    let searchSeq = 0;
-    let currentToken = null;
-    let isModerator = false;
-
-    const selectCss = {
-      display:"flex",
-      flexDirection:"column",
-      alignItems:"flex-start",
-      gap:"4px",
-      padding:"8px 10px",
-      borderRadius:"6px",
-      margin:"4px 0",
-      background:"transparent",
-      cursor:"pointer",
-      transition:"background-color 120ms ease"
-    };
-
-    function setStatus(text){
-      statusLabel.textContent = text || "";
-    }
-
-    function updateLobbyInfo(timer, enabled){
-      if (!enabled){
-        lobbyInfo.textContent = i18n("ui_lobby_disabled");
-        return;
-      }
-      if (typeof timer === "number" && Number.isFinite(timer) && timer > 0){
-        const date = new Date(timer * 1000);
-        lobbyInfo.textContent = i18n("ui_lobby_active_with_time", [date.toLocaleString()]);
-      } else {
-        lobbyInfo.textContent = i18n("ui_lobby_active_without_time");
-      }
-    }
-
-    function clearDetails(){
-      detailTitle.textContent = i18n("ui_select_no_selection");
-      detailMeta.textContent = "";
-      linkRow.textContent = "";
-      descLabel.textContent = "";
-      passwordInfo.textContent = "";
-      lobbyCheckbox.checked = false;
-      lobbyCheckbox.disabled = true;
-      lobbyCheckbox.title = "";
-      lobbyInfo.textContent = "";
-      moderatorInfo.textContent = "";
-      selectedDetails = null;
-      desiredLobbyState = false;
-      currentToken = null;
-      isModerator = false;
-      okBtn.disabled = true;
-    }
-
-    function renderList(){
-      listContainer.textContent = "";
-      activeItem = null;
-      if (!rooms.length){
-        setStatus(i18n("ui_select_status_none"));
-        clearDetails();
-        return;
-      }
-      const countText = rooms.length === 1
-        ? i18n("ui_select_status_single")
-        : i18n("ui_select_status_many", [rooms.length]);
-      setStatus(countText);
-      for (const room of rooms){
-        const item = doc.createElement("div");
-        Object.assign(item.style, selectCss);
-        item.dataset.token = room.token;
-        item.addEventListener("mouseenter", () => { if (item !== activeItem) item.style.background = "rgba(0,0,0,0.06)"; });
-        item.addEventListener("mouseleave", () => { if (item !== activeItem) item.style.background = "transparent"; });
-        const title = doc.createElement("div");
-        title.textContent = room.displayName || room.name || room.token;
-        title.style.fontWeight = "500";
-        item.appendChild(title);
-        const linkLine = doc.createElement("div");
-        linkLine.textContent = normalizedBaseUrl + "/call/" + room.token;
-        Object.assign(linkLine.style,{fontSize:"11px",opacity:"0.75",wordBreak:"break-all"});
-        item.appendChild(linkLine);
-        const firstLine = (room.description || "")
-          .split(/\r?\n/)
-          .map((line) => line.trim())
-          .find((line) => line.length > 0) || "";
-        if (firstLine){
-          const desc = doc.createElement("div");
-          desc.textContent = firstLine;
-          Object.assign(desc.style,{fontSize:"11px",opacity:"0.75"});
-          item.appendChild(desc);
-        }
-        const badges = [];
-        if (room.hasPassword) badges.push(i18n("ui_badge_password_required"));
-        if (room.listable){
-          badges.push(i18n("ui_badge_listed"));
-        } else if (room.source === "own" || room.isParticipant){
-          badges.push(i18n("ui_badge_owned"));
-        }
-        if (badges.length){
-          const meta = doc.createElement("div");
-          meta.textContent = badges.join(" | ");
-          Object.assign(meta.style,{fontSize:"10px",opacity:"0.6"});
-          item.appendChild(meta);
-        }
-        item.addEventListener("click", () => selectRoom(room, item));
-        listContainer.appendChild(item);
-      }
-    }
-
-    async function selectRoom(room, item){
-      if (!room) return;
-      if (activeItem) activeItem.style.background = "transparent";
-      activeItem = item;
-      if (activeItem) activeItem.style.background = "var(--arrowpanel-dimmed, rgba(0,0,0,0.12))";
-      clearDetails();
-      currentToken = room.token;
-      detailTitle.textContent = room.displayName || room.name || room.token;
-      const metaParts = [];
-      if (room.listable) metaParts.push(i18n("ui_badge_listed"));
-      else if (room.source === "own" || room.isParticipant) metaParts.push(i18n("ui_badge_owned"));
-      if (room.hasPassword) metaParts.push(i18n("ui_badge_password_required"));
-      if (room.guestsAllowed !== false) metaParts.push(i18n("ui_badge_guests_allowed"));
-      detailMeta.textContent = metaParts.join(" | ");
-      linkRow.textContent = normalizedBaseUrl + "/call/" + currentToken;
-      descLabel.textContent = (room.description || "").trim();
-      passwordInfo.textContent = room.hasPassword ? i18n("ui_password_info_yes") : i18n("ui_password_info_no");
-      lobbyInfo.textContent = i18n("ui_lobby_loading_details");
-      okBtn.disabled = true;
-      const requestToken = ++detailRequestToken;
-
-      try{
-        const rawDetails = await fetchRoomDetails(context, currentToken);
-        if (detailRequestToken !== requestToken) return;
-        const normalized = Object.assign({}, room, rawDetails || {});
-        normalized.token = normalized.token || currentToken;
-        selectedDetails = normalized;
-        detailTitle.textContent = normalized.displayName || normalized.name || normalized.token;
-        const normalizedMeta = [];
-        if (normalized.listable) normalizedMeta.push(i18n("ui_badge_listed"));
-        else if (normalized.source === "own" || normalized.isParticipant) normalizedMeta.push(i18n("ui_badge_owned"));
-        if (normalized.hasPassword) normalizedMeta.push(i18n("ui_badge_password_required"));
-        normalizedMeta.push(normalized.guestsAllowed === false ? i18n("ui_badge_guests_forbidden") : i18n("ui_badge_guests_allowed"));
-        detailMeta.textContent = normalizedMeta.join(" | ");
-        linkRow.textContent = normalizedBaseUrl + "/call/" + normalized.token;
-        descLabel.textContent = (normalized.description || "").trim();
-        passwordInfo.textContent = normalized.hasPassword ? i18n("ui_password_info_yes") : i18n("ui_password_info_no");
-        desiredLobbyState = normalized.lobbyState === 1;
-        lobbyCheckbox.checked = desiredLobbyState;
-        lobbyInfo.textContent = i18n("ui_lobby_fetching_status");
-        okBtn.disabled = true;
-
-        const roomPermissions = typeof normalized.permissions === "number" ? normalized.permissions : null;
-        isModerator = !!(roomPermissions != null && (roomPermissions & 64) !== 0);
-        let participants = [];
-        const allowParticipantLookup = isModerator || normalized.isParticipant || normalized.source === "own";
-        if (allowParticipantLookup){
-          try{
-            participants = await fetchRoomParticipants(context, normalized.token);
-          }catch(partErr){
-            err(partErr);
-          }
-        }
-        if (!isModerator && participants.length){
-          const loweredUser = currentUser ? currentUser.toLowerCase() : "";
-          if (loweredUser){
-            isModerator = participants.some((p) => {
-              if (!p) return false;
-              const actor = (p.actorId || "").trim().toLowerCase();
-              if (!actor || actor !== loweredUser) return false;
-              if (p.participantType === 1) return true;
-              if (typeof p.permissions === "number" && (p.permissions & 64) !== 0) return true;
-              return false;
-            });
-          }
-        }
-        if (!allowParticipantLookup && !isModerator){
-          moderatorInfo.textContent = i18n("ui_moderator_not_participant");
-        }
-        lobbyCheckbox.disabled = !isModerator;
-        lobbyCheckbox.title = isModerator ? "" : i18n("ui_lobby_no_permission");
-        moderatorInfo.textContent = isModerator ? i18n("ui_moderator_can_manage") : i18n("ui_moderator_cannot_manage");
-        desiredLobbyState = lobbyCheckbox.checked;
-        updateLobbyInfo(normalized.lobbyTimer, desiredLobbyState);
-        okBtn.disabled = false;
-        const entry = rooms.find(r => r.token === normalized.token);
-        if (entry){
-          entry.description = normalized.description || entry.description;
-          entry.hasPassword = !!normalized.hasPassword;
-        }
-      }catch(fetchErr){
-        err(fetchErr);
-        if (detailRequestToken !== requestToken) return;
-        lobbyInfo.textContent = i18n("ui_details_error");
-        moderatorInfo.textContent = "";
-        okBtn.disabled = true;
-      }
-    }
-
-    lobbyCheckbox.addEventListener("change", () => {
-      if (!selectedDetails){
-        lobbyCheckbox.checked = false;
-        desiredLobbyState = false;
-        updateLobbyInfo(0, false);
-        return;
-      }
-      desiredLobbyState = lobbyCheckbox.checked;
-      updateLobbyInfo(selectedDetails?.lobbyTimer || 0, desiredLobbyState);
-    });
-
-    cancelBtn.addEventListener("click", () => overlay.remove());
-    overlay.addEventListener("click", (ev) => { if (ev.target === overlay) overlay.remove(); });
-
-    let searchTimeout = null;
-    searchInput.addEventListener("input", () => {
-      if (searchTimeout) winObj.clearTimeout(searchTimeout);
-      searchTimeout = winObj.setTimeout(() => {
-        loadRooms(searchInput.value.trim());
-      }, 300);
-    });
-
-    async function loadRooms(term){
-      const seq = ++searchSeq;
-      setStatus(i18n("ui_select_status_loading"));
-      listContainer.textContent = "";
-      clearDetails();
-      try{
-        const fetched = await fetchListedRooms(context, term || "");
-        if (seq !== searchSeq) return;
-        rooms = (Array.isArray(fetched) ? fetched : []).map((room) => {
-          const token = room && (room.token || room.roomToken);
-          if (!token) return null;
-          const copy = Object.assign({}, room, { token });
-          copy.displayName = copy.displayName || copy.name || "";
-          copy.description = copy.description || "";
-          copy.hasPassword = !!copy.hasPassword;
-          copy.listable = copy.listable === 1 || copy.listable === true;
-          copy.guestsAllowed = copy.guestsAllowed !== false;
-          copy.isParticipant = copy.isParticipant === true || typeof copy.participantType === "number";
-          return copy;
-        }).filter(Boolean);
-        rooms = rooms.filter((room) => {
-          if (!room.guestsAllowed) return false;
-          const joinable = room.listable || room.source === "own" || room.isParticipant;
-          return joinable;
-        });
-        rooms.sort((a,b) => {
-          const left = (a.displayName || a.name || "").toLowerCase();
-          const right = (b.displayName || b.name || "").toLowerCase();
-          return left.localeCompare(right);
-        });
-        log("loadRooms result", { term: term || "", count: rooms.length });
-        renderList();
-      }catch(loadErr){
-        err(loadErr);
-        if (seq !== searchSeq) return;
-        setStatus(i18n("ui_select_status_error", [loadErr?.message || loadErr]));
-      }
-    }
-
-    await loadRooms("");
-
-    okBtn.addEventListener("click", async () => {
-      if (!selectedDetails) return;
-      const originalLabel = okBtn.textContent;
-      okBtn.disabled = true;
-      okBtn.textContent = i18n("ui_button_apply_progress");
-      try{
-        const title = selectedDetails.displayName || selectedDetails.name || i18n("ui_default_title");
-        const roomUrl = normalizedBaseUrl + "/call/" + selectedDetails.token;
-        log("select dialog apply", {
-          token: shortToken(selectedDetails.token),
-          desiredLobbyState,
-          isModerator
-        });
-        const initialLobbyState = selectedDetails.lobbyState === 1;
-        let lobbyStateForWatcher = initialLobbyState;
-
-        if (isModerator){
-          if (desiredLobbyState !== initialLobbyState){
-            const startTs = desiredLobbyState ? extractStartTimestamp(innerDoc) : undefined;
-            await performLobbyUpdate(context, {
-              token: selectedDetails.token,
-              enableLobby: desiredLobbyState,
-              startTimestamp: desiredLobbyState ? startTs : undefined
-            });
-            lobbyStateForWatcher = !!desiredLobbyState;
-          }
-        } else {
-          lobbyStateForWatcher = initialLobbyState;
-        }
-
-        selectedDetails.lobbyState = lobbyStateForWatcher ? 1 : 0;
-
-        const placed = fillIntoEvent(innerDoc, roomUrl, null, title);
-        appendEventDescription(innerDoc, selectedDetails.description || "");
-
-        overlay.remove();
-        setupLobbyWatcher(context, doc, innerDoc, selectedDetails.token, lobbyStateForWatcher);
-
-        const messageLines = [i18n("ui_alert_link_inserted", [roomUrl])];
-        if (!placed) messageLines.push(i18n("ui_alert_location_missing"));
-        if (selectedDetails.hasPassword) messageLines.push(i18n("ui_alert_password_protected"));
-        messageLines.push(lobbyStateForWatcher ? i18n("ui_alert_lobby_state_active") : i18n("ui_alert_lobby_state_inactive"));
-        if (!isModerator){
-          messageLines.push(i18n("ui_alert_lobby_no_rights"));
-        }
-        showAlert(docWin, messageLines.join("\n"));
-      }catch(applyErr){
-        const applyMsg = applyErr?.message || String(applyErr);
-        const permissionProblem = applyMsg && (applyMsg.toLowerCase().includes("berechtigung") || applyMsg.includes("403"));
-        if (!permissionProblem){
-          err(applyErr);
-        }
-        okBtn.disabled = false;
-        okBtn.textContent = originalLabel;
-        const alertMsg = permissionProblem
-          ? i18n("ui_select_apply_permission_denied")
-          : i18n("ui_select_apply_failed", [applyMsg]);
-        if (permissionProblem && selectedDetails){
-          const currentLobby = selectedDetails.lobbyState === 1;
-          desiredLobbyState = currentLobby;
-          lobbyCheckbox.checked = currentLobby;
-          lobbyCheckbox.disabled = true;
-          lobbyCheckbox.title = i18n("ui_lobby_no_permission");
-          moderatorInfo.textContent = i18n("ui_moderator_cannot_manage");
-          updateLobbyInfo(selectedDetails.lobbyTimer || 0, currentLobby);
-        }
-        showAlert(docWin, alertMsg);
-      }
-    });
-  }catch(e){
-    if (overlay) {
-      try { overlay.remove(); }catch(_){}
-    }
-    err(e);
-    const docWin = doc?.defaultView || window;
-    showAlert(docWin, i18n("ui_select_rooms_load_failed", [e?.message || e]));
-  }
-}
 function findDescriptionField(candidates){
   for (const d of candidates){
     try{
@@ -3110,34 +2800,6 @@ async function requestUtility(context, payload){
   return null;
 }
 
-function appendEventDescription(doc, text){
-  if (text == null) return;
-  const value = String(text).trim();
-  if (!value) return;
-  const candidates = collectEventDocs(doc);
-  const target = findDescriptionField(candidates);
-  if (!target) return;
-  try{
-    let current = "";
-    if ("value" in target) current = target.value || "";
-    else if (target.innerText) current = target.innerText;
-    else current = target.textContent || "";
-    if (current && current.includes(value)) return;
-    const needsSpacing = current && !/\n$/.test(current);
-    const addition = (current ? (needsSpacing ? "\n\n" : "\n") : "") + value;
-    if ("value" in target){
-      target.value = (target.value || "") + addition;
-      const descDoc = target.ownerDocument || doc;
-      try{
-        target.dispatchEvent(new (descDoc?.defaultView || window).Event("input",{ bubbles:true }));
-      }catch(_){}
-    } else if (target.ownerDocument && target.ownerDocument.execCommand){
-      target.ownerDocument.execCommand("insertText", false, addition);
-    } else {
-      target.textContent = (target.textContent || "") + addition;
-    }
-  }catch(_){}
-}
 
 function fillIntoEvent(doc, url, password, title){
   const candidates = collectEventDocs(doc);
@@ -3298,28 +2960,15 @@ this.calToolbar = class extends ExtensionCommon.ExtensionAPI {
 }
 
 
-async function getRoomParticipantsDirect(context, token){
-  if (!token) throw localizedError("error_room_token_missing");
-  const { baseUrl, user, appPass } = await getCredentials(context);
-  if (!baseUrl || !user || !appPass) throw localizedError("error_credentials_missing");
-  const auth = "Basic " + btoa(user + ":" + appPass);
-  const headers = { "OCS-APIRequest": "true", "Authorization": auth, "Accept":"application/json" };
-  const url = baseUrl + "/ocs/v2.php/apps/spreed/api/v4/room/" + encodeURIComponent(token) + "/participants?includeStatus=true";
-  const res = await fetch(url, { method:"GET", headers });
-  const raw = await res.text();
-  let data = null;
-  try { data = raw ? JSON.parse(raw) : null; } catch(_){ }
-  if (res.status === 404){
-    return [];
-  }
-  if (!res.ok){
-    const meta = data?.ocs?.meta || {};
-    const detail = meta.message || raw || (res.status + " " + res.statusText);
-    throw localizedError("error_ocs", [detail]);
-  }
-  const participants = data?.ocs?.data;
-  return Array.isArray(participants) ? participants : [];
-}
+
+
+
+
+
+
+
+
+
 
 
 

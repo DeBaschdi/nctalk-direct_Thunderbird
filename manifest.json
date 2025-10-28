@@ -2,7 +2,7 @@
     "manifest_version":  2,
     "default_locale":  "de",
     "name":  "__MSG_extName__",
-    "version":  "2.0.1",
+    "version":  "2.1.0",
     "description":  "__MSG_extDescription__",
     "developer":  {
                      "name":  "Bastian Kleinschmidt"
@@ -22,7 +22,8 @@
                     ],
     "background":  {
                        "scripts":  [
-                                       "background.js"
+                                       "modules/talkcore.js",
+                                       "modules/background.js"
                                    ]
                    },
     "options_ui":  {
