@@ -2,7 +2,7 @@
     "manifest_version":  2,
     "default_locale":  "de",
     "name":  "__MSG_extName__",
-    "version":  "2.1.0",
+    "version":  "2.2.0",
     "description":  "__MSG_extDescription__",
     "developer":  {
                      "name":  "Bastian Kleinschmidt"
@@ -12,20 +12,33 @@
                          "gecko":  {
                                        "id":  "nctalk-direct-esr140@example.com",
                                        "strict_min_version":  "140.0",
-                                       "strict_max_version":  "144.*"
+                                       "strict_max_version":  "140.*"
                                    }
                      },
     "permissions":  [
                         "storage",
+                        "tabs",
+                        "compose",
                         "*://*/ocs/*",
-                        "*://*/remote.php/*"
+                        "*://*/remote.php/*",
+                        "*://*/index.php/*"
                     ],
     "background":  {
                        "scripts":  [
+                                       "modules/i18n.js",
+                                       "modules/nccore.js",
                                        "modules/talkcore.js",
+                                       "modules/ncfilelink.js",
                                        "modules/background.js"
                                    ]
                    },
+    "compose_action":  {
+                          "default_title":  "__MSG_compose_filelink_title__",
+                          "default_icon":  {
+                                               "16":  "icons/nextcloud-16.png",
+                                               "32":  "icons/nextcloud-32.png"
+                                           }
+                      },
     "options_ui":  {
                        "page":  "options.html",
                        "browser_style":  true,

@@ -8,17 +8,15 @@
  * und bereinigt dabei z.B. überflüssige Slashes in der Basis-URL.
  * @returns {Promise<{baseUrl:string,user:string,appPass:string}>}
  */
+
+
+/**
+ * Liefert Add-on-Credentials. Bevorzugt NCCore.getOpts(),
+ * fällt aber auf lokale Speicherabfrage zurück, wenn NCCore hier nicht bekannt ist.
+ * @returns {Promise<{baseUrl:string,user:string,appPass:string,debugEnabled:boolean,authMode:string}>}
+ */
 async function getOpts(){
-  const stored = await browser.storage.local.get([
-    "baseUrl",
-    "user",
-    "appPass"
-  ]);
-  return {
-    baseUrl: stored.baseUrl ? String(stored.baseUrl).replace(/\/+$/,"") : "",
-    user: stored.user || "",
-    appPass: stored.appPass || ""
-  };
+  return NCCore.getOpts();
 }
 
 const EVENT_SUPPORT_CACHE = {
@@ -646,10 +644,53 @@ function sanitizeDescription(desc){
  */
 function buildRoomDescription(baseDescription, url, password){
   const parts = [];
-  if (baseDescription && String(baseDescription).trim()) parts.push(String(baseDescription).trim());
-  if (url) parts.push("Talk-Link: " + url);
-  if (password) parts.push("Passwort: " + password);
+  if (baseDescription && String(baseDescription).trim()){
+    parts.push(String(baseDescription).trim());
+  }
+  const talkBlock = buildStandardTalkDescription(url, password);
+  if (talkBlock){
+    parts.push(talkBlock);
+  }
   return parts.join("\n\n").trim();
+}
+
+function descriptionI18n(key, substitutions = []){
+  try{
+    if (typeof bgI18n === "function"){
+      const msg = bgI18n(key, substitutions);
+      if (msg) return msg;
+    }
+  }catch(_){}
+  try{
+    if (typeof NCI18n !== "undefined" && typeof NCI18n.translate === "function"){
+      const msg = NCI18n.translate(key, substitutions);
+      if (msg) return msg;
+    }
+  }catch(_){}
+  if (substitutions.length){
+    return String(substitutions[0]);
+  }
+  return "";
+}
+
+function buildStandardTalkDescription(url, password){
+  const heading = descriptionI18n("ui_description_heading") || "Nextcloud Talk";
+  const joinLabel = descriptionI18n("ui_description_join_label") || "Jetzt an der Besprechung teilnehmen :";
+  const passwordLine = password ? (descriptionI18n("ui_description_password_line", [password]) || `Passwort: ${password}`) : "";
+  const helpLabel = descriptionI18n("ui_description_help_label") || "Benötigen Sie Hilfe?";
+  const helpUrl = descriptionI18n("ui_description_help_url") || "https://docs.nextcloud.com/server/latest/user_manual/de/talk/join_a_call_or_chat_as_guest.html";
+  const lines = [
+    heading,
+    "",
+    joinLabel,
+    url || "",
+    ""
+  ];
+  if (passwordLine){
+    lines.push(passwordLine, "");
+  }
+  lines.push(helpLabel, "", helpUrl);
+  return lines.join("\n").trim();
 }
 
 /**
@@ -1103,84 +1144,5 @@ async function delegateRoomModerator({ token, newModerator } = {}){
   L("delegate moderator completed", { token: shortToken(token), delegate: targetId, leftSelf: false });
   return { leftSelf: false, delegate: targetId };
 }
-/**
- * Validiert die hinterlegten Zugangsdaten durch zwei OCS-Aufrufe für den Test-Dialog.
- */
-async function probeNextcloudCredentials({ baseUrl, user, appPass } = {}){
-  const normalizedBase = normalizeBaseUrl(baseUrl);
-  const trimmedUser = typeof user === "string" ? user.trim() : "";
-  const password = typeof appPass === "string" ? appPass : "";
-  if (!normalizedBase || !trimmedUser || !password){
-    return { ok:false, code:"missing", message: bgI18n("error_credentials_missing") };
-  }
-  const basicHeader = "Basic " + btoa(trimmedUser + ":" + password);
-  try{
-    L("options test connection", { base: normalizedBase, user: shortId(trimmedUser) });
-    const headers = {
-      "OCS-APIRequest": "true",
-      "Authorization": basicHeader,
-      "Accept": "application/json"
-    };
-    const url = normalizedBase + "/ocs/v2.php/cloud/capabilities";
-    const res = await fetch(url, { method:"GET", headers });
-    const raw = await res.text().catch(() => "");
-    let data = null;
-    try{ data = raw ? JSON.parse(raw) : null; }catch(_){}
-    if (res.status === 401 || res.status === 403){
-      const detail = data?.ocs?.meta?.message || "HTTP " + res.status;
-      return { ok:false, code:"auth", message: detail };
-    }
-    if (!res.ok){
-      const detail = data?.ocs?.meta?.message || raw || (res.status + " " + res.statusText);
-      return { ok:false, code:"http", message: detail };
-    }
-    const versionRaw = data?.ocs?.meta?.version || data?.ocs?.data?.version || "";
-    let versionStr = "";
-    if (typeof versionRaw === "string"){
-      versionStr = versionRaw;
-    } else if (versionRaw && typeof versionRaw === "object"){
-      if (typeof versionRaw.string === "string" && versionRaw.string.trim()){
-        versionStr = versionRaw.string.trim();
-      } else {
-        const parts = [];
-        if (versionRaw.major != null) parts.push(String(versionRaw.major));
-        if (versionRaw.minor != null) parts.push(String(versionRaw.minor));
-        if (versionRaw.micro != null) parts.push(String(versionRaw.micro));
-        if (parts.length){
-          versionStr = parts.join(".");
-        }
-      }
-    }
-    const message = versionStr ? "Nextcloud " + versionStr : "";
-    // ZusÃ¤tzlicher Login-Check gegen /ocs/v2.php/cloud/user
-    try{
-      const userUrl = normalizedBase + "/ocs/v2.php/cloud/user";
-      const userRes = await fetch(userUrl, {
-        method: "GET",
-        headers: {
-          "OCS-APIRequest": "true",
-          "Authorization": basicHeader,
-          "Accept": "application/json"
-        }
-      });
-      if (userRes.status === 401 || userRes.status === 403){
-        return { ok:false, code:"auth", message: "Benutzername oder App-Passwort ung\u00fcltig." };
-      }
-      if (!userRes.ok){
-        const userRaw = await userRes.text().catch(() => "");
-        const userData = (() => { try{ return userRaw ? JSON.parse(userRaw) : null; }catch(_){ return null; }})();
-        const detail = userData?.ocs?.meta?.message || userRaw || (userRes.status + " " + userRes.statusText);
-        return { ok:false, code:"http", message: detail };
-      }
-    }catch(userErr){
-      return { ok:false, code:"network", message: userErr?.message || String(userErr) };
-    }
-    return { ok:true, version: versionStr, message };
-  }catch(e){
-    return { ok:false, code:"network", message: e?.message || String(e) };
-  }
-}
-
-
 
 

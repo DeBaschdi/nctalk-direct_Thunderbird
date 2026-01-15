@@ -27,6 +27,34 @@
         "returns": {
           "type": "boolean"
         }
+      },
+      {
+        "name": "invokeWindow",
+        "type": "function",
+        "description": "Executes a specific action inside a tracked calendar window.",
+        "async": true,
+        "parameters": [
+          {
+            "name": "options",
+            "type": "object",
+            "properties": {
+              "windowId": {
+                "type": "integer"
+              },
+              "action": {
+                "type": "string"
+              },
+              "payload": {
+                "type": "object",
+                "optional": true,
+                "additionalProperties": true
+              }
+            }
+          }
+        ],
+        "returns": {
+          "type": "object"
+        }
       }
     ],
     "events": [

@@ -1,0 +1,489 @@
+<!doctype html>
+<meta charset="utf-8">
+<title data-i18n="talk_dialog_title">Nextcloud Talk</title>
+<style>
+:root{
+  --dialog-accent:#7a5bff;
+  --dialog-surface:#f4f6fd;
+  --dialog-outline:#d7dbeb;
+  --dialog-outline-strong:#c0c8e2;
+  --dialog-text:#1f1f1f;
+}
+body{
+  margin:0;
+  padding:20px 0 8px;
+  font:14px 'Segoe UI',system-ui,sans-serif;
+  background:linear-gradient(180deg,#fafdff 0%,#eef2fb 100%);
+  color:var(--dialog-text);
+  min-height:0;
+  box-sizing:border-box;
+  display:flex;
+  justify-content:center;
+}
+[hidden]{
+  display:none !important;
+}
+.dialog{
+  width:100%;
+  max-width:520px;
+  margin:0 auto;
+  background:#fff;
+  border-radius:16px;
+  border:1px solid rgba(4,16,41,0.08);
+  box-shadow:0 24px 48px rgba(11,17,39,0.2);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+.dialog-hero{
+  background:#0078d4;
+  padding:14px 14px 12px;
+  text-align:center;
+}
+.dialog-hero img{
+  height:40px;
+}
+.dialog-content{
+  padding:18px 28px 22px;
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+  background:var(--dialog-surface);
+}
+.section{
+  border:1px solid var(--dialog-outline);
+  border-radius:12px;
+  padding:16px 18px;
+  background:#fff;
+  box-shadow:0 6px 18px rgba(27,33,54,0.05);
+}
+.section label{
+  display:block;
+  font-weight:600;
+  margin-bottom:6px;
+}
+.section input[type="text"]{
+  width:100%;
+  padding:9px 11px;
+  border:1px solid var(--dialog-outline-strong);
+  border-radius:8px;
+  background:#f8f9ff;
+  box-sizing:border-box;
+  transition:border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.section input[type="text"]:focus{
+  border-color:var(--dialog-accent);
+  background:#fff;
+  outline:none;
+  box-shadow:0 0 0 3px rgba(122,91,255,0.15);
+}
+.section input[type="text"]::placeholder{
+  color:#8b90a5;
+}
+.section input[type="text"]:disabled{
+  background:#f0f1f7;
+  color:#8e8e8e;
+}
+.delegate-field{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  position:relative;
+}
+.delegate-input-row{
+  display:flex;
+  gap:8px;
+  align-items:center;
+}
+.delegate-input-row button{
+  padding:6px 14px;
+  border-radius:8px;
+  border:1px solid var(--dialog-outline-strong);
+  background:#fff;
+  color:var(--dialog-text);
+  cursor:pointer;
+  transition:border-color .15s ease,color .15s ease;
+}
+.delegate-input-row button:hover{
+  border-color:var(--dialog-accent);
+  color:var(--dialog-accent);
+}
+.delegate-status{
+  font-size:12px;
+  min-height:16px;
+  color:#5a5a5a;
+}
+.delegate-selected{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  border-radius:12px;
+  padding:12px 14px;
+  background:#eef2ff;
+  border:1px solid rgba(122,91,255,0.25);
+  margin-top:8px;
+}
+.delegate-selected-description{
+  font-size:11px;
+  color:#4a4a4a;
+  margin-top:4px;
+}
+.delegate-avatar{
+  width:40px;
+  height:40px;
+  border-radius:50%;
+  background:#d1dbec;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  flex:0 0 40px;
+  position:relative;
+  font-weight:600;
+  color:#1f1f1f;
+}
+.delegate-avatar img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:none;
+}
+.delegate-avatar span{
+  font-size:14px;
+}
+.delegate-selected-text{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  min-width:0;
+}
+.delegate-selected-title{
+  font-size:10px;
+  text-transform:uppercase;
+  letter-spacing:0.08em;
+  color:#5a5a5a;
+}
+.delegate-selected-name{
+  font-size:13px;
+  font-weight:600;
+  color:#1f1f1f;
+  word-break:break-word;
+}
+.delegate-selected-meta{
+  font-size:12px;
+  color:#5a5a5a;
+  word-break:break-word;
+}
+.delegate-hint{
+  font-size:11px;
+  color:#5a5a5a;
+  margin-top:6px;
+}
+.delegate-dropdown{
+  position:absolute;
+  left:0;
+  right:0;
+  top:100%;
+  margin-top:4px;
+  background:#fff;
+  border:1px solid #c7c7c7;
+  border-radius:10px;
+  box-shadow:0 16px 28px rgba(0,0,0,0.25);
+  max-height:240px;
+  overflow-y:auto;
+  display:none;
+  z-index:1000;
+}
+.delegate-dropdown .row{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  padding:9px 12px;
+  cursor:pointer;
+  border-bottom:1px solid rgba(0,0,0,0.04);
+}
+.delegate-dropdown .row:last-child{
+  border-bottom:none;
+}
+.delegate-dropdown .row:hover,
+.delegate-dropdown .row.active{
+  background:#eef3fb;
+}
+.delegate-dropdown .row-avatar{
+  width:32px;
+  height:32px;
+  border-radius:50%;
+  background:#d1dbec;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  flex:0 0 32px;
+  font-weight:600;
+  color:#1f1f1f;
+}
+.delegate-dropdown .row-avatar img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:none;
+}
+.delegate-dropdown .row-text{
+  display:flex;
+  flex-direction:column;
+  gap:1px;
+  min-width:0;
+}
+.delegate-dropdown .row-text .primary{
+  font-size:13px;
+  font-weight:600;
+  color:#1f1f1f;
+  word-break:break-word;
+}
+.delegate-dropdown .row-text .secondary{
+  font-size:12px;
+  color:#4d4d4d;
+  word-break:break-word;
+}
+.password-row{
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+.password-row input{
+  flex:1;
+}
+.password-row button{
+  padding:8px 14px;
+  border-radius:8px;
+  border:1px solid var(--dialog-outline-strong);
+  background:#fff;
+  color:var(--dialog-text);
+  cursor:pointer;
+  transition:border-color .15s ease,color .15s ease,background .15s ease;
+}
+.password-row button:hover{
+  border-color:var(--dialog-accent);
+  color:var(--dialog-accent);
+  background:#f7f5ff;
+}
+.checkbox-row{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  margin:8px 0;
+}
+.section-heading{
+  font-weight:600;
+  margin-bottom:6px;
+}
+.roomtype-grid{
+  display:grid;
+  grid-template-columns:120px 1fr;
+  gap:12px;
+  margin-top:6px;
+}
+.field-label{
+  font-weight:600;
+  padding-top:6px;
+}
+.roomtype-options{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.radio-block{
+  display:flex;
+  gap:10px;
+  align-items:flex-start;
+}
+.radio-block input[type="radio"]{
+  margin-top:4px;
+}
+.radio-title{
+  font-size:14px;
+  color:#1f1f1f;
+}
+.checkbox-row input[type="checkbox"],
+.radio-row input[type="radio"]{
+  accent-color:var(--dialog-accent);
+}
+.radio-row{
+  display:flex;
+  gap:18px;
+  align-items:center;
+}
+.footer{
+  border-top:1px solid #e1e1e1;
+  padding:16px 28px 22px;
+  display:flex;
+  justify-content:flex-end;
+  gap:12px;
+  background:#fff;
+}
+.footer button{
+  padding:8px 18px;
+  border-radius:6px;
+  border:1px solid #c7c7c7;
+  background:#f5f5f5;
+  cursor:pointer;
+}
+.footer button.primary{
+  background:#0078d4;
+  color:#fff;
+  border-color:#0078d4;
+}
+.message{
+  min-height:0;
+  font-size:13px;
+  color:#b00020;
+  margin-bottom:-4px;
+}
+.message:empty{
+  display:none;
+}
+.delegate-modal-overlay{
+  position:fixed;
+  inset:0;
+  background:rgba(8,20,48,0.45);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index:999;
+}
+.delegate-modal{
+  width:min(420px,calc(100% - 32px));
+  background:#fff;
+  border-radius:14px;
+  border:1px solid rgba(10,30,70,0.12);
+  box-shadow:0 28px 60px rgba(8,20,48,0.35);
+  padding:22px 26px 20px;
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+.delegate-modal-title{
+  font-size:16px;
+  font-weight:600;
+  color:#0d2a58;
+}
+.delegate-modal-text{
+  font-size:14px;
+  color:#1f1f1f;
+  line-height:1.45;
+}
+.delegate-modal-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+}
+.delegate-modal-actions button{
+  padding:8px 20px;
+  border-radius:8px;
+  border:1px solid #d0d4e4;
+  background:#f5f5fb;
+  color:#1f1f1f;
+  cursor:pointer;
+  transition:background .15s ease,border-color .15s ease,color .15s ease;
+}
+.delegate-modal-actions button.primary{
+  border-color:#0078d4;
+  background:#0078d4;
+  color:#fff;
+}
+.delegate-modal-actions button.secondary{
+  background:#fff;
+}
+.delegate-modal-actions button:focus{
+  outline:none;
+  box-shadow:0 0 0 3px rgba(0,120,212,0.35);
+}
+.delegate-modal-overlay[data-variant="error"] .delegate-modal-title{
+  color:#b00020;
+}
+.delegate-modal-overlay[data-variant="success"] .delegate-modal-title{
+  color:#0c7c3f;
+}
+</style>
+<body>
+  <div class="dialog">
+    <div class="dialog-hero">
+      <img src="../icons/talk-48.png" alt="Nextcloud Talk">
+    </div>
+    <div class="dialog-content">
+      <div class="message" id="messageBar"></div>
+      <div class="section">
+        <label for="titleInput" data-i18n="ui_create_title_label">Titel</label>
+        <input id="titleInput" type="text">
+      </div>
+      <div class="section password-section">
+        <label for="passwordInput" data-i18n="ui_create_password_label">Passwort (optional)</label>
+        <div class="password-row">
+          <input id="passwordInput" type="text" autocomplete="new-password">
+          <button type="button" id="passwordGenerateBtn" data-i18n="ui_password_generate_label">Generieren</button>
+        </div>
+      </div>
+      <div class="section section-options">
+        <div class="section-heading" data-i18n="talk_section_settings">Optionen</div>
+        <label class="checkbox-row">
+          <input type="checkbox" id="lobbyToggle">
+          <span data-i18n="ui_create_lobby_label">Lobby bis Startzeit aktiv</span>
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" id="listableToggle" checked>
+          <span data-i18n="ui_create_listable_label">In Suche anzeigen</span>
+        </label>
+        <div class="roomtype-grid">
+          <div class="field-label" data-i18n="ui_create_roomtype_label">Raumtyp</div>
+          <div class="roomtype-options">
+            <label class="radio-block">
+              <input type="radio" name="roomType" value="event" checked>
+              <div>
+                <div class="radio-title" data-i18n="ui_create_mode_event">Event-Konversation (Talk Raum an Termin binden)</div>
+              </div>
+            </label>
+            <label class="radio-block">
+              <input type="radio" name="roomType" value="normal">
+              <div>
+                <div class="radio-title" data-i18n="ui_create_mode_standard">Standard-Raum (eigenständig)</div>
+              </div>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="section delegate-section">
+        <label for="delegateInput" data-i18n="ui_create_moderator_label">Moderator (optional)</label>
+        <div class="delegate-field">
+          <div class="delegate-input-row">
+            <input id="delegateInput" type="text" autocomplete="off" spellcheck="false">
+            <button type="button" id="delegateClearBtn" data-i18n="ui_button_clear">Leeren</button>
+          </div>
+          <div class="delegate-status" id="delegateStatus"></div>
+          <div class="delegate-selected" id="delegateSelected" hidden>
+            <div class="delegate-avatar">
+              <img id="delegateAvatarImg" alt="">
+              <span id="delegateAvatarInitials"></span>
+            </div>
+            <div class="delegate-selected-text">
+              <div class="delegate-selected-title" data-i18n="ui_delegate_selected_title">Ausgewählt</div>
+              <div class="delegate-selected-name" id="delegateSelectedName"></div>
+              <div class="delegate-selected-meta" id="delegateSelectedMeta"></div>
+              <div class="delegate-selected-description" id="delegateSelectedDescription" data-i18n="ui_delegate_selected_description">Bei Angabe wird die Moderation nach Erstellung an diesen Benutzer übertragen und Sie verlassen den Raum.</div>
+            </div>
+          </div>
+          <div class="delegate-hint" data-i18n="ui_create_moderator_hint">Moderator kann optional vorab gesetzt werden.</div>
+          <div class="delegate-dropdown" id="delegateDropdown"></div>
+        </div>
+      </div>
+    </div>
+    <div class="footer">
+      <button type="button" id="cancelBtn" data-i18n="talk_dialog_close">Abbrechen</button>
+      <button type="button" id="okBtn" class="primary" data-i18n="talk_button_create_room">OK</button>
+    </div>
+  </div>
+  <script src="../modules/i18n.js"></script>
+  <script src="../modules/nccore.js"></script>
+  <script src="../modules/talkcore.js"></script>
+  <script src="talkDialog.js"></script>
+</body>
+

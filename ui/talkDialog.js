@@ -1,0 +1,1150 @@
+﻿(() => {
+  "use strict";
+
+  const POPUP_CONTENT_WIDTH = 520;
+  const MIN_CONTENT_HEIGHT = 0;
+  const CONTENT_MARGIN = 12;
+  let resizeTimer = null;
+  let layoutObserver = null;
+  let boundsPromise = null;
+
+  const LOG_PREFIX = "[NCUI][Talk]";
+  const params = new URLSearchParams(window.location.search);
+  const windowId = parseInt(params.get("windowId") || "", 10);
+  const titleInput = document.getElementById("titleInput");
+  const passwordInput = document.getElementById("passwordInput");
+  const passwordGenerateBtn = document.getElementById("passwordGenerateBtn");
+  const lobbyToggle = document.getElementById("lobbyToggle");
+  const listableToggle = document.getElementById("listableToggle");
+  const roomTypeRadios = document.querySelectorAll('input[name="roomType"]');
+  const dialogRoot = document.querySelector(".dialog");
+  const delegateInput = document.getElementById("delegateInput");
+  const delegateClearBtn = document.getElementById("delegateClearBtn");
+  const delegateStatus = document.getElementById("delegateStatus");
+  const delegateSelected = document.getElementById("delegateSelected");
+  const delegateSelectedName = document.getElementById("delegateSelectedName");
+  const delegateSelectedMeta = document.getElementById("delegateSelectedMeta");
+  const delegateSelectedDescription = document.getElementById("delegateSelectedDescription");
+  const delegateAvatarImg = document.getElementById("delegateAvatarImg");
+  const delegateAvatarInitials = document.getElementById("delegateAvatarInitials");
+  const delegateDropdown = document.getElementById("delegateDropdown");
+  const delegateSection = document.querySelector(".delegate-section");
+  const messageBar = document.getElementById("messageBar");
+  const okBtn = document.getElementById("okBtn");
+  const cancelBtn = document.getElementById("cancelBtn");
+
+  const t = (key, fallbackOrSubstitutions = "", substitutions = undefined) => {
+    let fallback = fallbackOrSubstitutions;
+    let subs = substitutions;
+    if (Array.isArray(fallbackOrSubstitutions) || (fallbackOrSubstitutions && typeof fallbackOrSubstitutions === "object" && !Array.isArray(substitutions))){
+      subs = fallbackOrSubstitutions;
+      fallback = "";
+    }
+    try{
+      const value = subs !== undefined
+        ? browser.i18n.getMessage(key, subs)
+        : browser.i18n.getMessage(key);
+      if (value){
+        return value;
+      }
+    }catch(_){ }
+    return fallback || "";
+  };
+
+  const state = {
+    windowId: Number.isFinite(windowId) ? windowId : null,
+    metadata: null,
+    event: null,
+    busy: false,
+    delegate: {
+      selected: null,
+      suggestions: [],
+      activeIndex: -1,
+      visible: false,
+      searchTimer: null,
+      searchSeq: 0,
+      alertLabel: ""
+    }
+  };
+
+  if (passwordInput){
+    passwordInput.setAttribute("placeholder", t("ui_create_password_placeholder", "Optional"));
+  }
+
+  logDebug("popup init", {
+    rawWindowId: params.get("windowId"),
+    parsedWindowId: state.windowId
+  });
+  bindEvents();
+  if (!state.windowId){
+    setMessage("Fenster-ID fehlt.", true);
+  }else{
+    init();
+  }
+  scheduleSizeUpdate();
+  window.addEventListener("load", scheduleSizeUpdate, { once:true });
+  window.addEventListener("resize", scheduleSizeUpdate);
+  if (typeof ResizeObserver === "function"){
+    layoutObserver = new ResizeObserver(() => scheduleSizeUpdate());
+    layoutObserver.observe(document.documentElement || document.body);
+  }
+
+  function bindEvents(){
+    okBtn?.addEventListener("click", handleOk);
+    cancelBtn?.addEventListener("click", () => {
+      if (!state.busy){
+        window.close();
+      }
+    });
+    passwordGenerateBtn?.addEventListener("click", handlePasswordGenerate);
+    initDelegateField();
+  }
+
+  async function init(){
+    try{
+      const check = await browser.runtime.sendMessage({
+        type: "talk:initDialog",
+        windowId: state.windowId
+      });
+      if (!check?.ok){
+        throw new Error(check?.error || "init failed");
+      }
+      await loadSnapshot();
+    }catch(error){
+      setMessage(error?.message || String(error), true);
+    }
+  }
+
+  async function loadTalkDefaults(){
+    const defaults = {
+      title: t("ui_default_title", "Besprechung"),
+      lobby: true,
+      listable: true,
+      roomType: "event"
+    };
+    if (!browser?.storage?.local){
+      return defaults;
+    }
+    try{
+      const stored = await browser.storage.local.get([
+        "talkDefaultTitle",
+        "talkDefaultLobby",
+        "talkDefaultListable",
+        "talkDefaultRoomType"
+      ]);
+      const rawTitle = (stored.talkDefaultTitle || "").trim();
+      if (rawTitle){
+        defaults.title = rawTitle;
+      }
+      if (typeof stored.talkDefaultLobby === "boolean"){
+        defaults.lobby = stored.talkDefaultLobby;
+      }
+      if (typeof stored.talkDefaultListable === "boolean"){
+        defaults.listable = stored.talkDefaultListable;
+      }
+      if (stored.talkDefaultRoomType === "normal"){
+        defaults.roomType = "normal";
+      }else if (stored.talkDefaultRoomType === "event"){
+        defaults.roomType = "event";
+      }
+    }catch(error){
+      console.error(LOG_PREFIX, "load defaults failed", error);
+    }
+    return defaults;
+  }
+
+  async function loadSnapshot(){
+    try{
+      const response = await browser.runtime.sendMessage({
+        type: "talk:getEventSnapshot",
+        windowId: state.windowId
+      });
+      if (!response?.ok){
+        throw new Error(response?.error || "snapshot failed");
+      }
+      state.metadata = response.metadata || {};
+      state.event = response.event || {};
+      const defaults = await loadTalkDefaults();
+      const eventTitle = (state.event.title || "").trim();
+      const metaTitle = (state.metadata.title || "").trim();
+      const fallbackTitle = defaults.title || t("ui_default_title", "Besprechung");
+      titleInput.value = eventTitle || metaTitle || fallbackTitle;
+      const lobbyValue = state.metadata.lobbyEnabled;
+      const listableValue = state.metadata.listable;
+      const eventValue = state.metadata.eventConversation;
+      lobbyToggle.checked = lobbyValue == null ? !!defaults.lobby : !!lobbyValue;
+      listableToggle.checked = listableValue == null ? !!defaults.listable : !!listableValue;
+      const eventMode = eventValue == null ? defaults.roomType !== "normal" : !!eventValue;
+      roomTypeRadios.forEach((radio) => {
+        radio.checked = radio.value === (eventMode ? "event" : "normal");
+      });
+      hydrateDelegateFromMetadata(state.metadata);
+      scheduleSizeUpdate();
+    }catch(error){
+      setMessage(error?.message || String(error), true);
+    }
+  }
+
+  async function handleOk(){
+    if (state.busy){
+      return;
+    }
+    logDebug("handleOk start", {
+      windowId: state.windowId
+    });
+    if (!(await ensureValidPassword())){
+      return;
+    }
+    if (!titleInput.value.trim()){
+      setMessage(t("ui_create_title_label", "Titel") + "?", true);
+      return;
+    }
+    state.busy = true;
+    okBtn.disabled = true;
+    cancelBtn.disabled = true;
+    setMessage(t("ui_button_create_progress", "Erstelle..."), false);
+    try{
+      const payload = buildCreatePayload();
+      const response = await browser.runtime.sendMessage({
+        type: "talk:createRoom",
+        payload
+      });
+      if (!response?.ok){
+        throw new Error(response?.error || "create failed");
+      }
+      logDebug("createRoom success", {
+        includeEvent: payload.eventConversation,
+        windowId: state.windowId
+      });
+      await applyCreateResult(payload, response.result || {});
+      window.close();
+    }catch(error){
+      setMessage(error?.message || String(error), true);
+      state.busy = false;
+      okBtn.disabled = false;
+      cancelBtn.disabled = false;
+    }
+  }
+
+  function buildCreatePayload(){
+    const startTimestamp = ensureUnixSeconds(state.event?.startTimestamp || state.metadata?.startTimestamp);
+    const endTimestamp = ensureUnixSeconds(state.event?.endTimestamp || state.metadata?.endTimestamp || state.event?.startTimestamp);
+    const type = Array.from(roomTypeRadios).find((radio) => radio.checked)?.value || "normal";
+    const objectMeta = buildEventObjectMetadata(startTimestamp, endTimestamp);
+    const delegateId = delegateInput?.value.trim() || "";
+    const delegateSelection = getDelegateSelectionPreview();
+    const normalizedDelegateName = delegateId
+      ? normalizeDelegateLabel(delegateSelection?.displayLabel || delegateId)
+      : "";
+    setDelegateAlertLabel(normalizedDelegateName || delegateId || state.delegate.alertLabel || delegateInput?.value);
+    return {
+      title: titleInput.value.trim(),
+      password: passwordInput.value.trim() || undefined,
+      enableLobby: !!lobbyToggle.checked,
+      enableListable: !!listableToggle.checked,
+      description: state.event?.description || "",
+      startTimestamp: startTimestamp ?? null,
+      eventConversation: type === "event",
+      objectType: type === "event" ? objectMeta.objectType : undefined,
+      objectId: type === "event" ? objectMeta.objectId : undefined,
+      delegateId: delegateId || undefined,
+      delegateName: normalizedDelegateName || undefined
+    };
+  }
+
+  function handlePasswordGenerate(){
+    if (!passwordInput || state.busy){
+      return;
+    }
+    const generated = generateSecurePassword(10);
+    passwordInput.value = generated;
+    try{
+      passwordInput.setSelectionRange(0, generated.length);
+    }catch(_){ }
+    passwordInput.focus();
+  }
+
+  async function applyCreateResult(payload, result){
+    if (!result?.token || !result?.url){
+      throw new Error(t("ui_create_failed", "Fehler beim Erstellen."));
+    }
+    const delegationInfo = await handleDelegationAfterCreate(result, payload);
+    const metadata = {
+      token: result.token,
+      url: result.url,
+      lobbyEnabled: !!payload.enableLobby,
+      startTimestamp: payload.startTimestamp ?? state.metadata?.startTimestamp ?? null,
+      eventConversation: !!payload.eventConversation,
+      objectId: payload.objectId || state.metadata?.objectId || null
+    };
+    if (payload.delegateId){
+      metadata.delegateId = payload.delegateId;
+      metadata.delegateName = payload.delegateName || payload.delegateId;
+      metadata.delegated = delegationInfo.delegated || false;
+      metadata.delegateReady = false;
+    }
+    await browser.runtime.sendMessage({
+      type: "talk:applyMetadata",
+      windowId: state.windowId,
+      metadata
+    });
+    const description = composeDescription(state.event?.description || "", result.url, payload.password);
+    if (typeof state.windowId !== "number"){
+      logDebug("missing windowId for talk:applyEventFields", {
+        windowId: state.windowId
+      });
+      throw new Error(t("ui_error_window_reference") || "Fensterreferenz fehlt.");
+    }
+    logDebug("send talk:applyEventFields", {
+      windowId: state.windowId,
+      title: payload.title,
+      hasDescription: !!description
+    });
+    await browser.runtime.sendMessage({
+      type: "talk:applyEventFields",
+      windowId: state.windowId,
+      fields: {
+        title: payload.title,
+        location: result.url,
+        description
+      }
+    });
+    await browser.runtime.sendMessage({
+      type: "talk:trackRoom",
+      token: result.token,
+      lobbyEnabled: metadata.lobbyEnabled,
+      eventConversation: metadata.eventConversation,
+      startTimestamp: metadata.startTimestamp ?? null
+    });
+    await browser.runtime.sendMessage({
+      type: "talk:registerCleanup",
+      windowId: state.windowId,
+      token: result.token,
+      info: {
+        objectId: metadata.objectId || null,
+        eventConversation: metadata.eventConversation,
+        fallback: !!result.fallback
+      }
+    });
+  }
+
+  async function handleDelegationAfterCreate(result, payload){
+    if (!payload.delegateId){
+      return { delegated: false };
+    }
+    logDebug("handleDelegation payload", {
+      delegateId: payload.delegateId,
+      delegateName: payload.delegateName || "",
+      mode: payload.eventConversation ? "event" : "standard"
+    });
+    const labelForAlert = getDelegateAlertLabel(payload);
+    const msg = t("ui_alert_pending_delegation", [labelForAlert]);
+    if (msg){
+      await showDelegateNotice(msg, "info");
+    }
+    logDebug("delegation deferred to calendar flow", {
+      token: result.token,
+      delegateId: payload.delegateId
+    });
+    return { delegated: false };
+  }
+
+  async function ensureValidPassword(){
+    if (!passwordInput){
+      return true;
+    }
+    const raw = passwordInput.value || "";
+    const trimmed = raw.trim();
+    if (!trimmed){
+      passwordInput.value = "";
+      return true;
+    }
+    if (trimmed.length >= 5){
+      passwordInput.value = trimmed;
+      return true;
+    }
+    await showInlineModal({
+      title: t("ui_password_error_title", "Passwort prüfen"),
+      message: t("ui_password_error_text", "Bitte mindestens 5 Zeichen eingeben."),
+      variant: "error",
+      buttons: [
+        { label: t("ui_button_ok", "OK"), role: "confirm", primary: true }
+      ]
+    });
+    try{
+      passwordInput.focus();
+      passwordInput.setSelectionRange(0, raw.length);
+    }catch(_){ }
+    return false;
+  }
+
+  function ensureUnixSeconds(value){
+    if (typeof value === "number" && Number.isFinite(value)){
+      return value > 1e12 ? Math.floor(value / 1000) : Math.floor(value);
+    }
+    return null;
+  }
+
+  function buildEventObjectMetadata(startTs, endTs){
+    if (state.metadata?.objectId){
+      return { objectType: "event", objectId: state.metadata.objectId };
+    }
+    const start = ensureUnixSeconds(startTs);
+    let stop = ensureUnixSeconds(endTs);
+    if (stop != null && start != null && stop < start){
+      stop = start;
+    }
+    if (start != null){
+      const rangeEnd = stop != null ? stop : start;
+      return { objectType: "event", objectId: `${start}#${rangeEnd}` };
+    }
+    const seed = [state.event?.title || "", Date.now(), Math.random()].join("|");
+    return { objectType: "event", objectId: `tb-${hashStringToHex(seed)}` };
+  }
+
+  function hashStringToHex(value){
+    const input = String(value ?? "");
+    let hash = 0;
+    for (let i = 0; i < input.length; i++){
+      hash = ((hash << 5) - hash) + input.charCodeAt(i);
+      hash |= 0;
+    }
+    return (hash >>> 0).toString(16).padStart(8, "0");
+  }
+
+  function composeDescription(baseText, url, password){
+    const parts = [];
+    const clean = (baseText || "").trim();
+    if (clean){
+      parts.push(clean);
+    }
+    parts.push(buildTalkDescriptionBlock(url, password));
+    return parts.join("\n\n").trim();
+  }
+
+  function buildTalkDescriptionBlock(url, password){
+    const heading = t("ui_description_heading", "Nextcloud Talk");
+    const joinLabel = t("ui_description_join_label", "Jetzt an der Besprechung teilnehmen :");
+    const passwordLine = password ? (t("ui_description_password_line", [password]) || `Passwort: ${password}`) : "";
+    const helpLabel = t("ui_description_help_label", "Benötigen Sie Hilfe?");
+    const helpUrl = t("ui_description_help_url", "https://docs.nextcloud.com/server/latest/user_manual/de/talk/join_a_call_or_chat_as_guest.html");
+    const lines = [heading, "", joinLabel, url || "", ""];
+    if (passwordLine){
+      lines.push(passwordLine, "");
+    }
+    lines.push(helpLabel, "", helpUrl);
+    return lines.join("\n").trim();
+  }
+
+  function initDelegateField(){
+    if (!delegateInput){
+      return;
+    }
+    delegateInput.addEventListener("focus", () => {
+      if (!delegateInput.value){
+        state.delegate.selected = null;
+        updateDelegateSelectedDisplay();
+      }
+      scheduleDelegateSearch(delegateInput.value.trim());
+    });
+    delegateInput.addEventListener("input", () => {
+      state.delegate.selected = null;
+      updateDelegateSelectedDisplay();
+      setDelegateAlertLabel(delegateInput.value);
+      scheduleDelegateSearch(delegateInput.value.trim());
+    });
+    delegateInput.addEventListener("keydown", handleDelegateKeyDown);
+    delegateInput.addEventListener("blur", () => {
+      window.setTimeout(() => hideDelegateDropdown(true), 120);
+    });
+    delegateClearBtn?.addEventListener("click", () => {
+      if (state.busy){
+        return;
+      }
+      delegateInput.value = "";
+      state.delegate.selected = null;
+      updateDelegateSelectedDisplay();
+      updateDelegateStatus("");
+      setDelegateAlertLabel("");
+      scheduleDelegateSearch("");
+      delegateInput.focus();
+    });
+    document.addEventListener("mousedown", (event) => {
+      if (!delegateSection?.contains(event.target)){
+        hideDelegateDropdown(true);
+      }
+    }, true);
+    scheduleDelegateSearch("");
+  }
+
+  function hydrateDelegateFromMetadata(meta){
+    if (!delegateInput){
+      return;
+    }
+    const delegateId = meta?.delegateId || "";
+    const delegateName = meta?.delegateName || "";
+    delegateInput.value = delegateId || "";
+    if (delegateId || delegateName){
+      state.delegate.selected = {
+        id: delegateId || delegateName,
+        email: "",
+        avatarDataUrl: "",
+        displayLabel: delegateName || delegateId,
+        initials: computeInitials(delegateName || delegateId)
+      };
+    }else{
+      state.delegate.selected = null;
+    }
+    setDelegateAlertLabel(delegateName || delegateId || "");
+    updateDelegateSelectedDisplay();
+    updateDelegateStatus("");
+  }
+
+  function updateDelegateStatus(text = "", isError = false){
+    if (!delegateStatus){
+      return;
+    }
+    delegateStatus.textContent = text || "";
+    delegateStatus.style.color = isError ? "#b00020" : "#5a5a5a";
+  }
+
+  function scheduleDelegateSearch(term){
+    if (!delegateInput){
+      return;
+    }
+    if (state.delegate.searchTimer){
+      window.clearTimeout(state.delegate.searchTimer);
+    }
+    state.delegate.searchTimer = window.setTimeout(() => performDelegateSearch(term), 250);
+  }
+
+  async function performDelegateSearch(term){
+    if (!delegateInput){
+      return;
+    }
+    state.delegate.searchTimer = null;
+    const seq = ++state.delegate.searchSeq;
+    const trimmed = (term || "").trim();
+    updateDelegateStatus(trimmed
+      ? t("ui_delegate_status_searching", "Suche läuft...")
+      : t("ui_delegate_status_loading", "Lade Kontakte..."));
+    try{
+      const response = await browser.runtime.sendMessage({
+        type: "talk:searchUsers",
+        payload: { searchTerm: trimmed, limit: 200 }
+      });
+      if (seq !== state.delegate.searchSeq){
+        return;
+      }
+      let items = [];
+      if (response){
+        if (response.ok && Array.isArray(response.users)){
+          items = response.users;
+        }else if (Array.isArray(response.result)){
+          items = response.result;
+        }else if (response.error){
+          throw new Error(response.error);
+        }
+      }
+      const emailPattern = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+      const normalized = items
+        .map((item) => {
+          if (!item){
+            return null;
+          }
+          const email = typeof item.email === "string" ? item.email.trim() : "";
+          if (!emailPattern.test(email)){
+            return null;
+          }
+          const id = (item.id || email).trim();
+          const label = (item.label || item.id || email).trim();
+          return {
+            id,
+            email,
+            avatarDataUrl: item.avatarDataUrl || "",
+            displayLabel: formatDelegateDisplay(label, email),
+            initials: computeInitials(label || email)
+          };
+        })
+        .filter(Boolean);
+      state.delegate.suggestions = normalized;
+      state.delegate.activeIndex = normalized.length ? 0 : -1;
+      if (!normalized.length){
+        updateDelegateStatus(trimmed
+          ? t("ui_delegate_status_none_with_email", "Keine Treffer mit E-Mail.")
+          : t("ui_delegate_status_none_found", "Keine Kontakte gefunden."));
+        hideDelegateDropdown(true);
+        return;
+      }
+      const summary = normalized.length === 1
+        ? t("ui_delegate_status_single", "1 Treffer")
+        : (t("ui_delegate_status_many", [normalized.length]) || `${normalized.length} Treffer`);
+      updateDelegateStatus(summary);
+      renderDelegateDropdown();
+    }catch(error){
+      if (seq !== state.delegate.searchSeq){
+        return;
+      }
+      console.error("[NCUI][Talk] delegate search failed", error);
+      updateDelegateStatus(error?.message || t("ui_delegate_status_error", "Suche fehlgeschlagen."), true);
+      state.delegate.suggestions = [];
+      hideDelegateDropdown(true);
+    }
+  }
+
+  function renderDelegateDropdown(){
+    if (!delegateDropdown || !delegateInput){
+      return;
+    }
+    delegateDropdown.textContent = "";
+    if (!state.delegate.suggestions.length || document.activeElement !== delegateInput){
+      hideDelegateDropdown(true);
+      return;
+    }
+    state.delegate.visible = true;
+    delegateDropdown.style.display = "block";
+    state.delegate.suggestions.forEach((item, index) => {
+      const row = document.createElement("div");
+      row.className = "row" + (index === state.delegate.activeIndex ? " active" : "");
+      row.dataset.index = String(index);
+      const avatar = document.createElement("div");
+      avatar.className = "row-avatar";
+      if (item.avatarDataUrl){
+        const img = document.createElement("img");
+        img.src = item.avatarDataUrl;
+        img.style.display = "block";
+        avatar.appendChild(img);
+      }else if (item.initials){
+        avatar.textContent = item.initials;
+      }else{
+        avatar.style.visibility = "hidden";
+      }
+      const textBox = document.createElement("div");
+      textBox.className = "row-text";
+      const primary = document.createElement("div");
+      primary.className = "primary";
+      primary.textContent = item.displayLabel || item.id;
+      textBox.appendChild(primary);
+      if (item.email && item.email !== item.displayLabel){
+        const secondary = document.createElement("div");
+        secondary.className = "secondary";
+        secondary.textContent = item.email;
+        textBox.appendChild(secondary);
+      }
+      row.appendChild(avatar);
+      row.appendChild(textBox);
+      row.addEventListener("mouseenter", () => {
+        state.delegate.activeIndex = index;
+        updateDelegateRowHighlight();
+      });
+      row.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        selectDelegateSuggestion(index);
+      });
+      row.addEventListener("click", (event) => {
+        event.preventDefault();
+        selectDelegateSuggestion(index);
+      });
+      delegateDropdown.appendChild(row);
+    });
+    updateDelegateRowHighlight();
+  }
+
+  function updateDelegateRowHighlight(){
+    if (!delegateDropdown){
+      return;
+    }
+    const rows = delegateDropdown.querySelectorAll(".row");
+    rows.forEach((row) => {
+      const idx = Number(row.dataset.index);
+      if (idx === state.delegate.activeIndex){
+        row.classList.add("active");
+      }else{
+        row.classList.remove("active");
+      }
+    });
+  }
+
+  function hideDelegateDropdown(resetActive){
+    if (!delegateDropdown){
+      return;
+    }
+    delegateDropdown.style.display = "none";
+    state.delegate.visible = false;
+    if (resetActive){
+      state.delegate.activeIndex = -1;
+    }
+  }
+
+  function handleDelegateKeyDown(event){
+    if (!state.delegate.visible || !state.delegate.suggestions.length){
+      return;
+    }
+    if (event.key === "ArrowDown"){
+      event.preventDefault();
+      const count = state.delegate.suggestions.length;
+      state.delegate.activeIndex = (state.delegate.activeIndex + 1 + count) % count;
+      updateDelegateRowHighlight();
+    }else if (event.key === "ArrowUp"){
+      event.preventDefault();
+      const count = state.delegate.suggestions.length;
+      state.delegate.activeIndex = (state.delegate.activeIndex - 1 + count) % count;
+      updateDelegateRowHighlight();
+    }else if (event.key === "Enter"){
+      event.preventDefault();
+      if (state.delegate.activeIndex >= 0){
+        selectDelegateSuggestion(state.delegate.activeIndex);
+      }
+    }else if (event.key === "Escape"){
+      hideDelegateDropdown(true);
+    }
+  }
+
+  function selectDelegateSuggestion(index){
+    const suggestion = state.delegate.suggestions[index];
+    if (!suggestion || !delegateInput){
+      return;
+    }
+    delegateInput.value = suggestion.id;
+    state.delegate.selected = suggestion;
+    setDelegateAlertLabel(suggestion.displayLabel || suggestion.email || suggestion.id || "");
+    hideDelegateDropdown(true);
+    updateDelegateSelectedDisplay();
+    updateDelegateStatus("");
+    logDebug("delegate selected", {
+      id: suggestion.id,
+      label: suggestion.displayLabel || "",
+      email: suggestion.email || ""
+    });
+    try{
+      const len = delegateInput.value.length;
+      delegateInput.setSelectionRange?.(len, len);
+    }catch(_){ }
+  }
+
+  function formatDelegateDisplay(label, email){
+    if (label && email && label !== email){
+      return `${label} <${email}>`;
+    }
+    return label || email || "";
+  }
+
+  function computeInitials(source){
+    const text = (source || "").trim();
+    if (!text){
+      return "";
+    }
+    const parts = text.split(/\s+/).filter(Boolean);
+    if (parts.length === 1){
+      return parts[0].slice(0, 2).toUpperCase();
+    }
+    return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
+  }
+
+  function normalizeDelegateLabel(value){
+    if (typeof value === "string"){
+      const trimmed = value.trim();
+      if (trimmed){
+        const lowered = trimmed.toLowerCase();
+        if (lowered === "null" || lowered === "undefined"){
+          return "";
+        }
+        return trimmed;
+      }
+    }
+    return "";
+  }
+
+  function setDelegateAlertLabel(value){
+    state.delegate.alertLabel = normalizeDelegateLabel(value) || "";
+  }
+
+  function getDelegateAlertLabel(payload){
+    const fallback = t("ui_delegate_selected_title", "Ausgewählt");
+    const candidates = [
+      state.delegate.alertLabel,
+      payload?.delegateName,
+      payload?.delegateId,
+      state.delegate.selected?.displayLabel,
+      state.delegate.selected?.email,
+      state.delegate.selected?.id,
+      delegateInput?.value
+    ];
+    for (const candidate of candidates){
+      const normalized = normalizeDelegateLabel(candidate);
+      if (normalized){
+        return normalized;
+      }
+    }
+    return fallback;
+  }
+
+  function updateDelegateSelectedDisplay(){
+    if (!delegateSelected || !delegateAvatarImg || !delegateAvatarInitials || !delegateSelectedName || !delegateSelectedMeta){
+      return;
+    }
+    const selection = getDelegateSelectionPreview();
+    if (!selection){
+      delegateSelected.hidden = true;
+      delegateAvatarImg.style.display = "none";
+      delegateAvatarInitials.style.display = "none";
+      delegateAvatarInitials.textContent = "";
+      delegateSelectedName.textContent = "";
+      delegateSelectedMeta.textContent = "";
+      if (delegateSelectedDescription){
+        delegateSelectedDescription.textContent = "";
+      }
+      return;
+    }
+    delegateSelected.hidden = false;
+    delegateSelectedName.textContent = selection.displayLabel || selection.id || "";
+    const metaLine = selection.email && selection.email !== selection.displayLabel ? selection.email : "";
+    delegateSelectedMeta.textContent = metaLine;
+    if (delegateSelectedDescription){
+      delegateSelectedDescription.textContent = t("ui_delegate_selected_description") ||
+        "Bei Angabe wird die Moderation nach Erstellung an diesen Benutzer übertragen und Sie verlassen den Raum.";
+    }
+    if (selection.avatarDataUrl){
+      delegateAvatarImg.src = selection.avatarDataUrl;
+      delegateAvatarImg.style.display = "block";
+      delegateAvatarInitials.style.display = "none";
+      delegateAvatarInitials.textContent = "";
+    }else if (selection.initials){
+      delegateAvatarImg.style.display = "none";
+      delegateAvatarInitials.style.display = "block";
+      delegateAvatarInitials.textContent = selection.initials;
+    }else{
+      delegateAvatarImg.style.display = "none";
+      delegateAvatarInitials.style.display = "none";
+      delegateAvatarInitials.textContent = "";
+    }
+  }
+
+  function getDelegateSelectionPreview(){
+    if (state.delegate.selected){
+      return state.delegate.selected;
+    }
+    if (!delegateInput){
+      return null;
+    }
+    const raw = delegateInput.value.trim();
+    if (!raw){
+      return null;
+    }
+    const email = raw.includes("@") ? raw : "";
+    return {
+      id: raw,
+      email,
+      avatarDataUrl: "",
+      displayLabel: raw,
+      initials: computeInitials(raw)
+    };
+  }
+
+  function generateSecurePassword(length = 10){
+    const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+    const lower = "abcdefghijkmnpqrstuvwxyz";
+    const digits = "23456789";
+    const specials = "!@#$%^&*()-_=+?";
+    const pick = (set) => set.charAt(getRandomInt(set.length));
+    const chars = [
+      pick(upper),
+      pick(lower),
+      pick(digits),
+      pick(specials)
+    ];
+    const remaining = Math.max(length, chars.length) - chars.length;
+    const all = upper + lower + digits + specials;
+    for (let i = 0; i < remaining; i++){
+      chars.push(pick(all));
+    }
+    shuffleArray(chars);
+    return chars.join("");
+  }
+
+  function getRandomInt(max){
+    if (max <= 0){
+      return 0;
+    }
+    if (window.crypto?.getRandomValues){
+      const buffer = new Uint32Array(1);
+      window.crypto.getRandomValues(buffer);
+      return buffer[0] % max;
+    }
+    return Math.floor(Math.random() * max);
+  }
+
+  function shuffleArray(array){
+    for (let i = array.length - 1; i > 0; i--){
+      const j = getRandomInt(i + 1);
+      const swap = array[i];
+      array[i] = array[j];
+      array[j] = swap;
+    }
+  }
+
+  function showDelegateNotice(message, variant = "info"){
+    if (!message){
+      return Promise.resolve();
+    }
+    const title = t("ui_delegate_modal_title", "Moderatorenübergabe");
+    return showInlineModal({
+      title,
+      message,
+      variant,
+      buttons: [
+        { label: t("ui_button_cancel", "Abbrechen"), role: "cancel", className: "secondary" },
+        { label: t("ui_button_ok", "OK"), role: "confirm", primary: true }
+      ]
+    });
+  }
+
+  function showInlineModal({ title, message, variant = "info", buttons }){
+    const finalButtons = Array.isArray(buttons) && buttons.length
+      ? buttons
+      : [{ label: t("ui_button_ok", "OK"), role: "confirm", primary: true }];
+    return new Promise((resolve) => {
+      try{
+        const overlay = document.createElement("div");
+        overlay.className = "delegate-modal-overlay";
+        if (variant){
+          overlay.dataset.variant = variant;
+        }
+        overlay.tabIndex = -1;
+        const modal = document.createElement("div");
+        modal.className = "delegate-modal";
+        modal.setAttribute("role", "alertdialog");
+        modal.setAttribute("aria-modal", "true");
+        const heading = document.createElement("div");
+        heading.className = "delegate-modal-title";
+        heading.textContent = title || "";
+        const text = document.createElement("div");
+        text.className = "delegate-modal-text";
+        text.textContent = message || "";
+        const actions = document.createElement("div");
+        actions.className = "delegate-modal-actions";
+        const existing = document.body.querySelector(".delegate-modal-overlay");
+        if (existing){
+          existing.remove();
+        }
+        const previousActive = document.activeElement;
+        const cleanup = (result) => {
+          overlay.removeEventListener("keydown", keyHandler, true);
+          overlay.removeEventListener("click", overlayHandler);
+          overlay.remove();
+          if (previousActive && typeof previousActive.focus === "function"){
+            try{
+              previousActive.focus();
+            }catch(_){ }
+          }
+          resolve(result);
+        };
+        const keyHandler = (event) => {
+          if (event.key === "Escape"){
+            event.preventDefault();
+            cleanup("dismiss");
+          }else if (event.key === "Enter"){
+            const primaryBtn = actions.querySelector("button.primary");
+            if (primaryBtn){
+              event.preventDefault();
+              primaryBtn.click();
+            }
+          }
+        };
+        const overlayHandler = (event) => {
+          if (event.target === overlay){
+            cleanup("dismiss");
+          }
+        };
+        finalButtons.forEach((btn) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          const classes = ["modal-btn"];
+          if (btn.primary){
+            classes.push("primary");
+          }else{
+            classes.push("secondary");
+          }
+          if (btn.className){
+            classes.push(btn.className);
+          }
+          button.className = classes.join(" ");
+          button.textContent = btn.label || "";
+          button.addEventListener("click", () => cleanup(btn.role || "confirm"));
+          actions.appendChild(button);
+        });
+        modal.appendChild(heading);
+        modal.appendChild(text);
+        modal.appendChild(actions);
+        overlay.appendChild(modal);
+        overlay.addEventListener("keydown", keyHandler, true);
+        overlay.addEventListener("click", overlayHandler);
+        document.body.appendChild(overlay);
+        window.setTimeout(() => {
+          try{
+            const focusTarget = actions.querySelector("button.primary") || actions.querySelector("button");
+            focusTarget?.focus();
+          }catch(_){ }
+        }, 0);
+      }catch(_){
+        try{
+          window.alert?.(message);
+        }catch(__){ }
+        resolve("fallback");
+      }
+    });
+  }
+
+  function scheduleSizeUpdate(){
+    if (resizeTimer){
+      window.clearTimeout(resizeTimer);
+    }
+    resizeTimer = window.setTimeout(() => {
+      enforceFixedWidth();
+      enforceMinHeight();
+      enforceWindowBoundsAsync();
+      resizeTimer = null;
+    }, 75);
+  }
+
+  function getFrameWidth(){
+    if (typeof window.outerWidth === "number" && typeof window.innerWidth === "number"){
+      return Math.max(0, window.outerWidth - window.innerWidth);
+    }
+    const docWidth = document.documentElement?.clientWidth || document.body?.clientWidth || POPUP_CONTENT_WIDTH;
+    const winWidth = typeof window.outerWidth === "number" ? window.outerWidth : docWidth;
+    return Math.max(0, winWidth - docWidth);
+  }
+
+  function getFrameHeight(){
+    if (typeof window.outerHeight === "number" && typeof window.innerHeight === "number"){
+      return Math.max(0, window.outerHeight - window.innerHeight);
+    }
+    const docHeight = document.documentElement?.clientHeight || document.body?.clientHeight || MIN_CONTENT_HEIGHT;
+    const winHeight = typeof window.outerHeight === "number" ? window.outerHeight : docHeight;
+    return Math.max(0, winHeight - docHeight);
+  }
+
+  function enforceFixedWidth(){
+    try{
+      const frame = getFrameWidth();
+      const targetOuter = POPUP_CONTENT_WIDTH + frame;
+      const currentOuter = typeof window.outerWidth === "number"
+        ? window.outerWidth
+        : (window.innerWidth + frame);
+      if (Math.abs(currentOuter - targetOuter) > 2){
+        const outerHeight = typeof window.outerHeight === "number"
+          ? window.outerHeight
+          : (window.innerHeight + getFrameHeight());
+        window.resizeTo(targetOuter, outerHeight);
+      }
+    }catch(_){ }
+  }
+
+  function enforceMinHeight(){
+    try{
+      const docHeight = getContentHeight();
+      const targetInner = Math.max(MIN_CONTENT_HEIGHT, docHeight + CONTENT_MARGIN);
+      const frame = getFrameHeight();
+      const targetOuter = targetInner + frame;
+      const currentOuter = typeof window.outerHeight === "number"
+        ? window.outerHeight
+        : (window.innerHeight + frame);
+      if (Math.abs(currentOuter - targetOuter) > 6){
+        const width = typeof window.outerWidth === "number"
+          ? window.outerWidth
+          : (POPUP_CONTENT_WIDTH + getFrameWidth());
+        window.resizeTo(width, targetOuter);
+      }
+    }catch(_){ }
+  }
+
+  function getDesiredOuterSize(){
+    const frameWidth = getFrameWidth();
+    const frameHeight = getFrameHeight();
+    const desiredWidth = POPUP_CONTENT_WIDTH + frameWidth;
+    const docHeight = getContentHeight();
+    const desiredInnerHeight = Math.max(MIN_CONTENT_HEIGHT, docHeight + CONTENT_MARGIN);
+    const desiredHeight = desiredInnerHeight + frameHeight;
+    return { desiredWidth, desiredHeight };
+  }
+
+  function enforceWindowBoundsAsync(){
+    if (!browser?.windows?.getCurrent || !browser?.windows?.update){
+      return;
+    }
+    if (boundsPromise){
+      return;
+    }
+    boundsPromise = (async () => {
+      try{
+        const { desiredWidth, desiredHeight } = getDesiredOuterSize();
+        const win = await browser.windows.getCurrent();
+        if (!win){
+          boundsPromise = null;
+          return;
+        }
+        const updates = {};
+        const currentWidth = win.width ?? desiredWidth;
+        const currentHeight = win.height ?? desiredHeight;
+        if (win.state === "maximized"){
+          updates.state = "normal";
+        }
+        if (Math.abs(currentWidth - desiredWidth) > 2){
+          updates.width = desiredWidth;
+        }
+        if (Math.abs(currentHeight - desiredHeight) > 6){
+          updates.height = desiredHeight;
+        }
+        if (Object.keys(updates).length){
+          if (!updates.state){
+            updates.state = "normal";
+          }
+          await browser.windows.update(win.id, updates);
+        }
+      }catch(_){ }
+      boundsPromise = null;
+    })();
+  }
+
+  function getContentHeight(){
+    try{
+      const rect = dialogRoot?.getBoundingClientRect?.();
+      if (rect && rect.height){
+        const styles = window.getComputedStyle(document.body);
+        const paddingTop = parseFloat(styles?.paddingTop || "0") || 0;
+        const paddingBottom = parseFloat(styles?.paddingBottom || "0") || 0;
+        return Math.max(MIN_CONTENT_HEIGHT, Math.ceil(rect.height + paddingTop + paddingBottom));
+      }
+    }catch(_){ }
+    const fallback = document.documentElement?.scrollHeight || document.body?.scrollHeight || MIN_CONTENT_HEIGHT;
+    return Math.max(MIN_CONTENT_HEIGHT, fallback);
+  }
+
+  function setMessage(text, isError){
+    if (!messageBar){
+      return;
+    }
+    messageBar.textContent = text || "";
+    messageBar.style.color = isError ? "#b00020" : "#1f1f1f";
+  }
+
+  function logDebug(label, data){
+    const details = data || "";
+    try{
+      console.log(LOG_PREFIX, label, details);
+    }catch(_){}
+    try{
+      browser.runtime.sendMessage({
+        type: "debug:log",
+        payload: {
+          channel: "NCUI",
+          label: "Talk",
+          text: label,
+          details
+        }
+      }).catch(() => {});
+    }catch(_){}
+  }
+})();
+

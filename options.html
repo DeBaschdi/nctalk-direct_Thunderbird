@@ -7,42 +7,154 @@
 <meta charset="utf-8">
 <title data-i18n="options_title">Nextcloud Talk - Einstellungen</title>
 <style>
-body{font:14px system-ui, sans-serif; max-width:720px; margin:20px auto; line-height:1.45;}
-.row{display:grid; grid-template-columns: 180px 1fr; gap:10px; align-items:center; margin:8px 0;}
-input[type="url"], input[type="text"], input[type="password"]{padding:8px; border:1px solid #ccc; border-radius:6px;}
+body{font:14px system-ui, sans-serif; max-width:760px; margin:20px auto; line-height:1.45;}
+.hero{background:#0078c6; border-radius:12px; padding:14px; margin-bottom:18px; display:flex; justify-content:center; align-items:center;}
+.hero img{height:48px;}
+.tabs{border:1px solid #d7d7d7; border-radius:10px; overflow:hidden;}
+.tab-list{display:flex; flex-wrap:wrap; border-bottom:1px solid #e1e1e1; background:#f7f8fa;}
+.tab-list button{flex:1 1 120px; padding:10px; border:none; background:none; cursor:pointer; font-weight:600;}
+.tab-list button.active{background:#ffffff; border-bottom:3px solid #1d73db;}
+.tab-panel{display:none; padding:20px;}
+.tab-panel.active{display:block;}
+.row{display:grid; grid-template-columns: 200px 1fr; gap:10px; align-items:center; margin:10px 0;}
+input[type="url"], input[type="text"], input[type="password"]{padding:8px; border:1px solid #ccc; border-radius:6px; width:100%;}
 footer{display:flex; gap:8px; margin-top:16px}
 #status{opacity:.8; font-size:12px}
-.donation{display:flex; flex-direction:column; gap:6px;}
+.donation{display:flex; flex-direction:column; gap:8px; margin-top:12px;}
 .donation-link{display:inline-flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid #e0e0e0; border-radius:8px; text-decoration:none; color:inherit; background:#fafafa;}
 .donation-link:hover{background:#f0f7ff; border-color:#b7d7ff;}
 .donation-link img{width:24px; height:24px;}
+.about-list{list-style:none; padding-left:0; margin:0;}
+.about-list li{margin-bottom:6px;}
+.tabs h2{margin-top:0;}
+.auth-block{border:1px solid #d5d5d5; border-radius:8px; padding:14px; margin:14px 0;}
+.auth-block legend{font-weight:600; padding:0 4px;}
+.radio-option{display:flex; align-items:center; gap:8px; margin:6px 0;}
+.button-row{display:flex; flex-wrap:wrap; gap:10px; margin-top:12px;}
+#testConnection,#loginFlowButton{padding:8px 12px;}
+.checklist{display:flex; flex-direction:column; gap:6px;}
+.checklist label{font-weight:400;}
 </style>
 <h1 data-i18n="options_heading">Nextcloud Talk - Einstellungen</h1>
-<div class="row"><label for="baseUrl" data-i18n="options_base_url_label">Nextcloud URL</label><input id="baseUrl" type="url" data-i18n-placeholder="options_base_url_placeholder" placeholder="https://cloud.example.com"></div>
-<div class="row"><label for="user" data-i18n="options_user_label">Benutzername</label><input id="user" type="text"></div>
-<div class="row"><label for="appPass" data-i18n="options_app_pass_label">App-Passwort</label><input id="appPass" type="password"></div>
-<div class="row">
-  <label data-i18n="options_debug_label">Debug-Logging</label>
-  <label style="display:flex; align-items:center; gap:6px;">
-    <input id="debugEnabled" type="checkbox">
-    <span data-i18n="options_debug_hint">Konsole f&uuml;r Diagnosemeldungen verwenden</span>
-  </label>
+<div class="hero">
+  <img src="logo-nextcloud-png-transparent.png" alt="Nextcloud">
 </div>
-<div class="row">
-  <label></label>
-  <button id="testConnection" type="button" data-i18n="options_test_button">Verbindung testen</button>
-</div>
-<div class="row">
-  <label data-i18n="options_support_label">Unterst&uuml;tzen</label>
-  <div class="donation">
-    <a class="donation-link" href="https://paypal.me/debaschdi" target="_blank" rel="noopener">
-      <img src="icons/paypal.svg" alt="">
-      <span data-i18n="options_support_link">PayPal: paypal.me/debaschdi</span>
-    </a>
+<div class="tabs">
+  <div class="tab-list" role="tablist">
+    <button type="button" class="tab-btn active" data-tab="general" data-i18n="options_tab_general">Allgemein</button>
+    <button type="button" class="tab-btn" data-tab="filelink" data-i18n="options_tab_filelink">Filelink</button>
+    <button type="button" class="tab-btn" data-tab="talklink" data-i18n="options_tab_talklink">Talk Link</button>
+    <button type="button" class="tab-btn" data-tab="advanced" data-i18n="options_tab_advanced">Erweitert</button>
+    <button type="button" class="tab-btn" data-tab="debug" data-i18n="options_tab_debug">Debug</button>
+    <button type="button" class="tab-btn" data-tab="about" data-i18n="options_tab_about">Über</button>
   </div>
+  <section id="tab-general" class="tab-panel active">
+    <div class="row"><label for="baseUrl" data-i18n="options_base_url_label">Nextcloud URL</label><input id="baseUrl" type="url" data-i18n-placeholder="options_base_url_placeholder" placeholder="https://cloud.example.com"></div>
+    <fieldset class="auth-block">
+      <legend data-i18n="options_auth_heading">Authentifizierung</legend>
+      <label class="radio-option">
+        <input type="radio" name="authMode" id="authModeManual" value="manual" checked>
+        <span data-i18n="options_auth_manual">Manuell (Benutzername + App-Passwort eingeben)</span>
+      </label>
+      <label class="radio-option">
+        <input type="radio" name="authMode" id="authModeLogin" value="loginFlow">
+        <span data-i18n="options_auth_login">Login mit Nextcloud (App-Passwort automatisch holen)</span>
+      </label>
+      <div class="button-row">
+        <button id="loginFlowButton" type="button" data-i18n="options_loginflow_button">Login mit Nextcloud...</button>
+        <button id="testConnection" type="button" data-i18n="options_test_button">Verbindung testen</button>
+      </div>
+    </fieldset>
+    <div class="row"><label for="user" data-i18n="options_user_label">Benutzername</label><input id="user" type="text"></div>
+    <div class="row"><label for="appPass" data-i18n="options_app_pass_label">App-Passwort</label><input id="appPass" type="password"></div>
+  </section>
+  <section id="tab-filelink" class="tab-panel">
+    <div class="row">
+      <label for="fileLinkBase" data-i18n="options_filelink_base_label">Basisverzeichnis</label>
+      <div>
+        <input id="fileLinkBase" type="text">
+        <p style="margin:6px 0 0 0;font-size:12px;color:#555;" data-i18n="options_filelink_base_hint">Dateien werden unterhalb dieses Verzeichnisses abgelegt (z.B. "90 Freigaben - extern").</p>
+      </div>
+    </div>
+    <fieldset class="auth-block">
+      <legend data-i18n="options_filelink_defaults_heading">Default-Einstellungen</legend>
+      <div class="row">
+        <label for="filelinkDefaultShareName" data-i18n="options_filelink_default_share_name_label">Freigabename (Default)</label>
+        <input id="filelinkDefaultShareName" type="text">
+      </div>
+      <div class="row">
+        <label data-i18n="options_filelink_default_permissions_label">Standard-Berechtigungen</label>
+        <div class="checklist">
+          <label><input id="filelinkDefaultPermCreate" type="checkbox"> <span data-i18n="options_filelink_default_perm_create">Hochladen/Erstellen</span></label>
+          <label><input id="filelinkDefaultPermWrite" type="checkbox"> <span data-i18n="options_filelink_default_perm_write">Bearbeiten</span></label>
+          <label><input id="filelinkDefaultPermDelete" type="checkbox"> <span data-i18n="options_filelink_default_perm_delete">Löschen</span></label>
+        </div>
+      </div>
+      <div class="row">
+        <label for="filelinkDefaultPassword" data-i18n="options_filelink_default_password_label">Passwort setzen (Default)</label>
+        <input id="filelinkDefaultPassword" type="checkbox">
+      </div>
+      <div class="row">
+        <label for="filelinkDefaultExpireDays" data-i18n="options_filelink_default_expire_days_label">Ablaufdatum (Tage)</label>
+        <input id="filelinkDefaultExpireDays" type="number" min="1" step="1">
+      </div>
+    </fieldset>
+  </section>
+  <section id="tab-talklink" class="tab-panel">
+    <fieldset class="auth-block">
+      <legend data-i18n="options_talk_defaults_heading">Default-Einstellungen</legend>
+      <div class="row">
+        <label for="talkDefaultTitle" data-i18n="options_talk_default_title_label">Titel (Default)</label>
+        <input id="talkDefaultTitle" type="text">
+      </div>
+      <div class="row">
+        <label for="talkDefaultLobby" data-i18n="options_talk_default_lobby_label">Lobby bis Startzeit aktiv</label>
+        <input id="talkDefaultLobby" type="checkbox">
+      </div>
+      <div class="row">
+        <label for="talkDefaultListable" data-i18n="options_talk_default_listable_label">In Suche anzeigen</label>
+        <input id="talkDefaultListable" type="checkbox">
+      </div>
+      <div class="row">
+        <label data-i18n="options_talk_default_roomtype_label">Raumtyp</label>
+        <div class="checklist">
+          <label><input type="radio" name="talkDefaultRoomType" value="event"> <span data-i18n="options_talk_default_roomtype_event">Event-Konversation</span></label>
+          <label><input type="radio" name="talkDefaultRoomType" value="normal"> <span data-i18n="options_talk_default_roomtype_standard">Standard-Raum</span></label>
+        </div>
+      </div>
+    </fieldset>
+  </section>
+  <section id="tab-advanced" class="tab-panel">
+    <p data-i18n="options_placeholder_advanced">Einstellungen folgen.</p>
+  </section>
+  <section id="tab-debug" class="tab-panel">
+    <div class="row">
+      <label data-i18n="options_debug_label">Debug-Logging</label>
+      <label style="display:flex; align-items:center; gap:6px;">
+        <input id="debugEnabled" type="checkbox">
+        <span data-i18n="options_debug_hint">Konsole für Diagnosemeldungen verwenden</span>
+      </label>
+    </div>
+  </section>
+  <section id="tab-about" class="tab-panel">
+    <ul class="about-list">
+      <li><strong data-i18n="options_about_version_label">Version:</strong> <span id="aboutVersion">–</span></li>
+      <li><strong data-i18n="options_about_copyright_label">Copyright:</strong> <span>2025 Bastian Kleinschmidt</span></li>
+      <li><strong data-i18n="options_about_license_label">Lizenz:</strong> <a id="licenseLink" href="LICENSE.txt" target="_blank" rel="noopener" data-i18n="options_about_license_value">AGPL v3</a></li>
+    </ul>
+    <div class="donation">
+      <strong data-i18n="options_about_support_heading">Unterstützen</strong>
+      <a class="donation-link" href="https://paypal.me/debaschdi" target="_blank" rel="noopener">
+        <img src="icons/paypal.svg" alt="">
+        <span data-i18n="options_support_link">PayPal: paypal.me/debaschdi</span>
+      </a>
+    </div>
+  </section>
 </div>
 <footer>
   <button id="save" data-i18n="options_save_button">Speichern</button>
   <span id="status"></span>
 </footer>
+<script src="modules/i18n.js"></script>
+<script src="modules/ncfilelink.js"></script>
 <script src="options.js"></script>
