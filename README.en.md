@@ -1,3 +1,4 @@
+[Deutsch](README.md) | [English](README.en.md)
 # Nextcloud Enterprise for Thunderbird
 
 Nextcloud Enterprise for Thunderbird connects Thunderbird directly with Nextcloud Talk and secure Nextcloud sharing. One click opens a modern wizard, creates Talk rooms with lobby and moderator delegation, and inserts the meeting link (including password) into the event. From the compose window, you can generate a Nextcloud share with upload folder, expiration date, password, and personal message. No copy-paste juggling and no open links in emails: everything stays in Thunderbird and is stored cleanly in your Nextcloud.
