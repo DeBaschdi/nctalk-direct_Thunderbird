@@ -9,29 +9,7 @@ const DEFAULT_FILELINK_EXPIRE_DAYS = 7;
 const DEFAULT_FILELINK_SHARE_NAME = i18n("filelink_share_default") || "Freigabename";
 const DEFAULT_TALK_TITLE = i18n("ui_default_title") || "Besprechung";
 
-function translatePage(){
-
-  const textNodes = document.querySelectorAll("[data-i18n]");
-  textNodes.forEach((el) => {
-    const key = el.dataset.i18n;
-    if (!key) return;
-    const message = i18n(key);
-    if (message) el.textContent = message;
-  });
-
-  const placeholderNodes = document.querySelectorAll("[data-i18n-placeholder]");
-  placeholderNodes.forEach((el) => {
-    const key = el.dataset.i18nPlaceholder;
-    if (!key) return;
-    const message = i18n(key);
-    if (message) el.setAttribute("placeholder", message);
-  });
-
-  const titleMessage = i18n("options_title");
-  if (titleMessage) document.title = titleMessage;
-}
-
-translatePage();
+NCTalkDomI18n.translatePage(i18n, { titleKey: "options_title" });
 initTabs();
 initAbout();
 
@@ -112,7 +90,7 @@ async function load(){
       : true;
   }
   if (filelinkDefaultExpireDaysInput){
-    filelinkDefaultExpireDaysInput.value = String(normalizeExpireDays(stored.filelinkDefaultExpireDays));
+  filelinkDefaultExpireDaysInput.value = String(NCTalkTextUtils.normalizeExpireDays(stored.filelinkDefaultExpireDays, DEFAULT_FILELINK_EXPIRE_DAYS));
   }
   if (talkDefaultTitleInput){
     talkDefaultTitleInput.value = stored.talkDefaultTitle || DEFAULT_TALK_TITLE;
@@ -146,7 +124,7 @@ async function save(){
   const filelinkDefaultPassword = filelinkDefaultPasswordInput
     ? !!filelinkDefaultPasswordInput.checked
     : true;
-  const filelinkDefaultExpireDays = normalizeExpireDays(filelinkDefaultExpireDaysInput?.value);
+  const filelinkDefaultExpireDays = NCTalkTextUtils.normalizeExpireDays(filelinkDefaultExpireDaysInput?.value, DEFAULT_FILELINK_EXPIRE_DAYS);
   const talkDefaultTitle = (talkDefaultTitleInput?.value || "").trim() || DEFAULT_TALK_TITLE;
   const talkDefaultLobby = talkDefaultLobbyInput ? !!talkDefaultLobbyInput.checked : true;
   const talkDefaultListable = talkDefaultListableInput ? !!talkDefaultListableInput.checked : true;
@@ -268,14 +246,6 @@ function updateAuthModeUI(){
   if (loginFlowButton){
     loginFlowButton.disabled = loginFlowInProgress || mode !== "loginFlow";
   }
-}
-
-function normalizeExpireDays(value){
-  const parsed = parseInt(value, 10);
-  if (Number.isFinite(parsed) && parsed > 0){
-    return parsed;
-  }
-  return DEFAULT_FILELINK_EXPIRE_DAYS;
 }
 
 function getSelectedTalkDefaultRoomType(){

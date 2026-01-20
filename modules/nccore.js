@@ -6,16 +6,16 @@
 'use strict';
 
 /**
- * Kernfunktionen rund um Login-Flow V2 und Credential-Checks.
- * Läuft im gleichen Kontext wie talkcore/background.
+ * Core helpers for Login Flow v2 and credential checks.
+ * Runs in the same context as talkcore/background.
  */
 const NCCore = (() => {
   const DEVICE_NAME = "Nextcloud Enterprise for Thunderbird";
 
   /**
-   * Normalisiert eine Basis-URL (Trim + Trailing Slashes entfernen).
-   * @param {string} input - Benutzerangabe aus den Einstellungen.
-   * @returns {string} - Bereinigte Basis-URL oder leerer String.
+   * Normalize a base URL (trim and remove trailing slashes).
+   * @param {string} input - User input from settings.
+   * @returns {string} - Normalized base URL or empty string.
    */
   function normalizeBaseUrl(input){
     if (!input) return "";
@@ -23,8 +23,8 @@ const NCCore = (() => {
   }
 
   /**
-   * Prüft Basis-URL, Benutzername und App-Passwort per OCS-API.
-   * Ruft zuerst /cloud/capabilities und danach /cloud/user auf.
+   * Validate base URL, username, and app password via OCS.
+   * Calls /cloud/capabilities first and then /cloud/user.
    * @param {{baseUrl:string,user:string,appPass:string}} params
    * @returns {Promise<{ok:boolean, code:string, message?:string, version?:string}>}
    */
@@ -103,8 +103,8 @@ const NCCore = (() => {
   }
 
   /**
-   * Startet den Login Flow V2 und liefert Browser-URL + Poll-Endpunkt.
-   * @param {string} baseUrl - Nextcloud-Instanz (bereits geprüft).
+   * Start Login Flow v2 and return the browser URL and poll endpoint.
+   * @param {string} baseUrl - Nextcloud instance (already validated).
    * @returns {Promise<{loginUrl:string,pollEndpoint:string,pollToken:string}>}
    */
   async function startLoginFlow(baseUrl){
@@ -145,7 +145,7 @@ const NCCore = (() => {
   }
 
   /**
-   * Pollt den Login Flow Endpunkt bis ein App-Passwort geliefert wird.
+   * Poll the login flow endpoint until an app password is returned.
    * @param {{pollEndpoint:string,pollToken:string,timeoutMs?:number,intervalMs?:number}} options
    * @returns {Promise<{loginName:string,appPassword:string}>}
    */
@@ -198,8 +198,8 @@ const NCCore = (() => {
   }
 
   /**
-   * Liefert ein Promise, das nach ms Millisekunden erfüllt wird.
-   * @param {number} ms - Wartezeit.
+   * Return a promise that resolves after the given milliseconds.
+   * @param {number} ms - Delay in milliseconds.
    * @returns {Promise<void>}
    */
   function delay(ms){
@@ -207,7 +207,7 @@ const NCCore = (() => {
   }
 
   /**
-   * Gibt die gespeicherten Zugangsdaten inkl. normalisierter Basis-URL zurück.
+   * Return stored credentials with a normalized base URL.
    * @returns {Promise<{baseUrl:string,user:string,appPass:string,debugEnabled:boolean,authMode:string}>}
    */
   async function getOpts(){

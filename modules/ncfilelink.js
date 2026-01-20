@@ -28,6 +28,7 @@
   const sharedTranslator = (typeof NCI18n !== "undefined" && typeof NCI18n.translate === "function")
     ? NCI18n.translate
     : null;
+  const escapeHtml = NCTalkTextUtils.escapeHtml;
 
   function i18n(key, substitutions = []){
     if (sharedTranslator){
@@ -131,11 +132,6 @@
       throw new Error(text || `Path check failed (${res.status})`);
     }
     return true;
-  }
-
-  function buildAuthHeader(user, password){
-    const raw = `${user || ""}:${password || ""}`;
-    return "Basic " + btoa(unescape(encodeURIComponent(raw)));
   }
 
   async function ensureFolderExists(davRoot, relativePath, authHeader){
@@ -266,7 +262,8 @@
     if (publicUpload){
       params.append("publicUpload", "true");
     }
-    const res = await fetch(url, {
+    const response = await NCOcs.ocsRequest({
+      url,
       method: "POST",
       headers: {
         "Authorization": authHeader,
@@ -276,11 +273,10 @@
       },
       body: params
     });
-    const raw = await res.text().catch(() => "");
-    let data = null;
-    try{ data = raw ? JSON.parse(raw) : null; }catch(_){}
-    if (!res.ok){
-      const detail = data?.ocs?.meta?.message || raw || `HTTP ${res.status}`;
+    const raw = response.raw || "";
+    const data = response.data;
+    if (!response.ok){
+      const detail = data?.ocs?.meta?.message || raw || `HTTP ${response.status}`;
       throw new Error(detail);
     }
     return {
@@ -304,7 +300,8 @@
       password: password || "",
       hideDownload: "false"
     };
-    const res = await fetch(url, {
+    const response = await NCOcs.ocsRequest({
+      url,
       method: "PUT",
       headers: {
         "Authorization": authHeader,
@@ -314,11 +311,10 @@
       },
       body: JSON.stringify(payload)
     });
-    const raw = await res.text().catch(() => "");
-    let data = null;
-    try{ data = raw ? JSON.parse(raw) : null; }catch(_){}
-    if (!res.ok){
-      const detail = data?.ocs?.meta?.message || raw || `HTTP ${res.status}`;
+    const raw = response.raw || "";
+    const data = response.data;
+    if (!response.ok){
+      const detail = data?.ocs?.meta?.message || raw || `HTTP ${response.status}`;
       throw new Error(detail);
     }
   }
@@ -347,7 +343,7 @@
       throw new Error(i18n("error_credentials_missing"));
     }
     const info = buildShareFolderInfo(basePath || await getFileLinkBasePath(), shareName, shareDate ? new Date(shareDate) : new Date());
-    const authHeader = buildAuthHeader(opts.user, opts.appPass);
+    const authHeader = NCOcs.buildAuthHeader(opts.user, opts.appPass);
     const davRoot = `${opts.baseUrl.replace(/\/+$/, "")}/remote.php/dav/files/${encodeURIComponent(opts.user)}`;
     logDebug(opts, "availability:check", {
       shareName,
@@ -375,7 +371,7 @@
       throw new Error(i18n("error_credentials_missing"));
     }
     const relativePath = typeof input === "string" ? input : input?.relativePath || "";
-    const authHeader = buildAuthHeader(opts.user, opts.appPass);
+    const authHeader = NCOcs.buildAuthHeader(opts.user, opts.appPass);
     const davRoot = `${opts.baseUrl.replace(/\/+$/, "")}/remote.php/dav/files/${encodeURIComponent(opts.user)}`;
     logDebug(opts, "remotePath:check", { relativePath });
     const exists = await pathExists({ davRoot, relativePath, authHeader });
@@ -465,15 +461,11 @@
     return `<table style="border-collapse:collapse;"><tr>${cells}</tr></table>`;
   }
 
-  function escapeHtml(value){
-    if (value == null) return "";
-    return String(value)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
-
+  /**
+   * Create a Nextcloud share, upload files, and return HTML output.
+   * @param {object} request
+   * @returns {Promise<{html:string, shareUrl:string, shareInfo:object}>}
+   */
   async function createFileLink(request){
     const opts = await NCCore.getOpts();
     logDebug(opts, "createFileLink:start", {
@@ -492,7 +484,7 @@
       : buildShareFolderInfo(basePathSetting, request?.shareName, shareDate);
     const relativeBase = folderInfo.relativeBase;
     const relativeFolder = folderInfo.relativeFolder;
-    const authHeader = buildAuthHeader(opts.user, opts.appPass);
+    const authHeader = NCOcs.buildAuthHeader(opts.user, opts.appPass);
     const davRoot = `${opts.baseUrl.replace(/\/+$/, "")}/remote.php/dav/files/${encodeURIComponent(opts.user)}`;
     logDebug(opts, "folders:ensure", { relativeBase, relativeFolder });
     await ensureFolderExists(davRoot, relativeBase, authHeader);
@@ -599,7 +591,7 @@
   }
 
   /**
-   * Aktualisiert Notiz/Label eines bestehenden Shares (z.B. nach Wizard-Schritt 4).
+   * Update note/label metadata for an existing share (for example after wizard step 4).
    * @param {{shareInfo:Object,noteEnabled:boolean,note:string}} options
    */
   async function updateShareDetails({ shareInfo, noteEnabled, note } = {}){
@@ -610,7 +602,7 @@
     if (!opts.baseUrl || !opts.user || !opts.appPass){
       throw new Error(i18n("error_credentials_missing"));
     }
-    const authHeader = buildAuthHeader(opts.user, opts.appPass);
+    const authHeader = NCOcs.buildAuthHeader(opts.user, opts.appPass);
     const normalizedLabel = shareInfo.label || sanitizeShareName(shareInfo.folderInfo?.folderName || shareInfo.shareUrl);
     logDebug(opts, "share:updateMeta", {
       shareId: shareInfo.shareId,
@@ -638,7 +630,7 @@
     if (!opts.baseUrl || !opts.user || !opts.appPass){
       throw new Error(i18n("error_credentials_missing"));
     }
-    const authHeader = buildAuthHeader(opts.user, opts.appPass);
+    const authHeader = NCOcs.buildAuthHeader(opts.user, opts.appPass);
     const davRoot = `${opts.baseUrl.replace(/\/+$/, "")}/remote.php/dav/files/${encodeURIComponent(opts.user)}`;
     logDebug(opts, "folders:delete", { relativeFolder: folderInfo.relativeFolder });
     await deleteRemotePath(davRoot, folderInfo.relativeFolder, authHeader);

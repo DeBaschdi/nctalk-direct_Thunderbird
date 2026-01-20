@@ -1,12 +1,21 @@
-﻿(() => {
+/**
+ * Copyright (c) 2025 Bastian Kleinschmidt
+ * Licensed under the GNU Affero General Public License v3.0.
+ * See LICENSE.txt for details.
+ */
+(() => {
   "use strict";
 
   const POPUP_CONTENT_WIDTH = 520;
   const MIN_CONTENT_HEIGHT = 0;
   const CONTENT_MARGIN = 12;
-  let resizeTimer = null;
   let layoutObserver = null;
-  let boundsPromise = null;
+  const popupSizer = window.NCTalkPopupSizing?.createPopupSizer({
+    fixedWidth: POPUP_CONTENT_WIDTH,
+    minHeight: MIN_CONTENT_HEIGHT,
+    margin: CONTENT_MARGIN,
+    getContentHeight: () => getContentHeight()
+  });
 
   const LOG_PREFIX = "[NCUI][Talk]";
   const params = new URLSearchParams(window.location.search);
@@ -81,12 +90,14 @@
   }else{
     init();
   }
-  scheduleSizeUpdate();
-  window.addEventListener("load", scheduleSizeUpdate, { once:true });
-  window.addEventListener("resize", scheduleSizeUpdate);
-  if (typeof ResizeObserver === "function"){
-    layoutObserver = new ResizeObserver(() => scheduleSizeUpdate());
-    layoutObserver.observe(document.documentElement || document.body);
+  if (popupSizer){
+    popupSizer.scheduleSizeUpdate();
+    window.addEventListener("load", popupSizer.scheduleSizeUpdate, { once:true });
+    window.addEventListener("resize", popupSizer.scheduleSizeUpdate);
+    if (typeof ResizeObserver === "function"){
+      layoutObserver = new ResizeObserver(() => popupSizer.scheduleSizeUpdate());
+      layoutObserver.observe(document.documentElement || document.body);
+    }
   }
 
   function bindEvents(){
@@ -179,7 +190,7 @@
         radio.checked = radio.value === (eventMode ? "event" : "normal");
       });
       hydrateDelegateFromMetadata(state.metadata);
-      scheduleSizeUpdate();
+      popupSizer?.scheduleSizeUpdate();
     }catch(error){
       setMessage(error?.message || String(error), true);
     }
@@ -256,7 +267,7 @@
     if (!passwordInput || state.busy){
       return;
     }
-    const generated = generateSecurePassword(10);
+    const generated = NCTalkPassword.generatePassword({ length: 10 });
     passwordInput.value = generated;
     try{
       passwordInput.setSelectionRange(0, generated.length);
@@ -418,22 +429,13 @@
     if (clean){
       parts.push(clean);
     }
-    parts.push(buildTalkDescriptionBlock(url, password));
-    return parts.join("\n\n").trim();
-  }
-
-  function buildTalkDescriptionBlock(url, password){
-    const heading = t("ui_description_heading", "Nextcloud Talk");
-    const joinLabel = t("ui_description_join_label", "Jetzt an der Besprechung teilnehmen :");
-    const passwordLine = password ? (t("ui_description_password_line", [password]) || `Passwort: ${password}`) : "";
-    const helpLabel = t("ui_description_help_label", "Benötigen Sie Hilfe?");
-    const helpUrl = t("ui_description_help_url", "https://docs.nextcloud.com/server/latest/user_manual/de/talk/join_a_call_or_chat_as_guest.html");
-    const lines = [heading, "", joinLabel, url || "", ""];
-    if (passwordLine){
-      lines.push(passwordLine, "");
+    const buildStandard = window.NCTalkCore && typeof window.NCTalkCore.buildStandardTalkDescription === "function"
+      ? window.NCTalkCore.buildStandardTalkDescription
+      : null;
+    if (buildStandard){
+      parts.push(buildStandard(url, password));
     }
-    lines.push(helpLabel, "", helpUrl);
-    return lines.join("\n").trim();
+    return parts.join("\n\n").trim();
   }
 
   function initDelegateField(){
@@ -841,48 +843,6 @@
     };
   }
 
-  function generateSecurePassword(length = 10){
-    const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-    const lower = "abcdefghijkmnpqrstuvwxyz";
-    const digits = "23456789";
-    const specials = "!@#$%^&*()-_=+?";
-    const pick = (set) => set.charAt(getRandomInt(set.length));
-    const chars = [
-      pick(upper),
-      pick(lower),
-      pick(digits),
-      pick(specials)
-    ];
-    const remaining = Math.max(length, chars.length) - chars.length;
-    const all = upper + lower + digits + specials;
-    for (let i = 0; i < remaining; i++){
-      chars.push(pick(all));
-    }
-    shuffleArray(chars);
-    return chars.join("");
-  }
-
-  function getRandomInt(max){
-    if (max <= 0){
-      return 0;
-    }
-    if (window.crypto?.getRandomValues){
-      const buffer = new Uint32Array(1);
-      window.crypto.getRandomValues(buffer);
-      return buffer[0] % max;
-    }
-    return Math.floor(Math.random() * max);
-  }
-
-  function shuffleArray(array){
-    for (let i = array.length - 1; i > 0; i--){
-      const j = getRandomInt(i + 1);
-      const swap = array[i];
-      array[i] = array[j];
-      array[j] = swap;
-    }
-  }
-
   function showDelegateNotice(message, variant = "info"){
     if (!message){
       return Promise.resolve();
@@ -993,118 +953,6 @@
         resolve("fallback");
       }
     });
-  }
-
-  function scheduleSizeUpdate(){
-    if (resizeTimer){
-      window.clearTimeout(resizeTimer);
-    }
-    resizeTimer = window.setTimeout(() => {
-      enforceFixedWidth();
-      enforceMinHeight();
-      enforceWindowBoundsAsync();
-      resizeTimer = null;
-    }, 75);
-  }
-
-  function getFrameWidth(){
-    if (typeof window.outerWidth === "number" && typeof window.innerWidth === "number"){
-      return Math.max(0, window.outerWidth - window.innerWidth);
-    }
-    const docWidth = document.documentElement?.clientWidth || document.body?.clientWidth || POPUP_CONTENT_WIDTH;
-    const winWidth = typeof window.outerWidth === "number" ? window.outerWidth : docWidth;
-    return Math.max(0, winWidth - docWidth);
-  }
-
-  function getFrameHeight(){
-    if (typeof window.outerHeight === "number" && typeof window.innerHeight === "number"){
-      return Math.max(0, window.outerHeight - window.innerHeight);
-    }
-    const docHeight = document.documentElement?.clientHeight || document.body?.clientHeight || MIN_CONTENT_HEIGHT;
-    const winHeight = typeof window.outerHeight === "number" ? window.outerHeight : docHeight;
-    return Math.max(0, winHeight - docHeight);
-  }
-
-  function enforceFixedWidth(){
-    try{
-      const frame = getFrameWidth();
-      const targetOuter = POPUP_CONTENT_WIDTH + frame;
-      const currentOuter = typeof window.outerWidth === "number"
-        ? window.outerWidth
-        : (window.innerWidth + frame);
-      if (Math.abs(currentOuter - targetOuter) > 2){
-        const outerHeight = typeof window.outerHeight === "number"
-          ? window.outerHeight
-          : (window.innerHeight + getFrameHeight());
-        window.resizeTo(targetOuter, outerHeight);
-      }
-    }catch(_){ }
-  }
-
-  function enforceMinHeight(){
-    try{
-      const docHeight = getContentHeight();
-      const targetInner = Math.max(MIN_CONTENT_HEIGHT, docHeight + CONTENT_MARGIN);
-      const frame = getFrameHeight();
-      const targetOuter = targetInner + frame;
-      const currentOuter = typeof window.outerHeight === "number"
-        ? window.outerHeight
-        : (window.innerHeight + frame);
-      if (Math.abs(currentOuter - targetOuter) > 6){
-        const width = typeof window.outerWidth === "number"
-          ? window.outerWidth
-          : (POPUP_CONTENT_WIDTH + getFrameWidth());
-        window.resizeTo(width, targetOuter);
-      }
-    }catch(_){ }
-  }
-
-  function getDesiredOuterSize(){
-    const frameWidth = getFrameWidth();
-    const frameHeight = getFrameHeight();
-    const desiredWidth = POPUP_CONTENT_WIDTH + frameWidth;
-    const docHeight = getContentHeight();
-    const desiredInnerHeight = Math.max(MIN_CONTENT_HEIGHT, docHeight + CONTENT_MARGIN);
-    const desiredHeight = desiredInnerHeight + frameHeight;
-    return { desiredWidth, desiredHeight };
-  }
-
-  function enforceWindowBoundsAsync(){
-    if (!browser?.windows?.getCurrent || !browser?.windows?.update){
-      return;
-    }
-    if (boundsPromise){
-      return;
-    }
-    boundsPromise = (async () => {
-      try{
-        const { desiredWidth, desiredHeight } = getDesiredOuterSize();
-        const win = await browser.windows.getCurrent();
-        if (!win){
-          boundsPromise = null;
-          return;
-        }
-        const updates = {};
-        const currentWidth = win.width ?? desiredWidth;
-        const currentHeight = win.height ?? desiredHeight;
-        if (win.state === "maximized"){
-          updates.state = "normal";
-        }
-        if (Math.abs(currentWidth - desiredWidth) > 2){
-          updates.width = desiredWidth;
-        }
-        if (Math.abs(currentHeight - desiredHeight) > 6){
-          updates.height = desiredHeight;
-        }
-        if (Object.keys(updates).length){
-          if (!updates.state){
-            updates.state = "normal";
-          }
-          await browser.windows.update(win.id, updates);
-        }
-      }catch(_){ }
-      boundsPromise = null;
-    })();
   }
 
   function getContentHeight(){

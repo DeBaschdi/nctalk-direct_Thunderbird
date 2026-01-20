@@ -2,9 +2,10 @@
  * Copyright (c) 2025 Bastian Kleinschmidt
  * Licensed under the GNU Affero General Public License v3.0.
  * See LICENSE.txt for details.
- *
- * Minimal Experiment-Bruecke fuer den Kalender-Dialog.
- * Registriert Fenster-Listener und stellt dem Dialog eine WebExtension-Bridge zur Verfuegung.
+ */
+/**
+ * Minimal experiment bridge for the calendar dialog.
+ * Registers window listeners and exposes a WebExtension bridge.
  */
 'use strict';
 
@@ -34,6 +35,9 @@ if (!EXTENSION){
 }
 
 const BRIDGE_SCRIPT_PATH = "ui/calToolbarDialog.js";
+const CAL_SHARED_PATH = "ui/calToolbarShared.js";
+let CAL_SHARED_URL = "";
+let CalUtils = null;
 const EVENT_DIALOG_URLS = [
   "chrome://calendar/content/calendar-event-dialog.xhtml",
   "chrome://calendar/content/calendar-event-dialog.xul"
@@ -54,8 +58,37 @@ const EVENT_WINDOW_CLEANUPS = new Map();
 const WINDOW_REGISTRY = new Map();
 let WINDOW_ID_COUNTER = 1;
 
+function ensureCalUtils(context){
+  if (CalUtils) return CalUtils;
+  const url = CAL_SHARED_URL || (context?.extension?.getURL ? context.extension.getURL(CAL_SHARED_PATH) : "");
+  if (!url) return null;
+  CAL_SHARED_URL = url;
+  try{
+    const globalScope = typeof globalThis !== "undefined" ? globalThis : this;
+    Services.scriptloader.loadSubScript(url, globalScope, "UTF-8");
+  }catch(e){
+    console.error("[NCExp] shared utils load failed", e);
+    return null;
+  }
+  CalUtils = (typeof globalThis !== "undefined" ? globalThis.NCTalkCalUtils : this.NCTalkCalUtils) || null;
+  return CalUtils;
+}
+
+function ensureCalUtilsInWindow(win){
+  if (!win) return null;
+  if (win.NCTalkCalUtils) return win.NCTalkCalUtils;
+  if (!CAL_SHARED_URL) return null;
+  try{
+    Services.scriptloader.loadSubScript(CAL_SHARED_URL, win, "UTF-8");
+  }catch(e){
+    console.error("[NCExp] shared utils window load failed", e);
+    return null;
+  }
+  return win.NCTalkCalUtils || null;
+}
+
 /**
- * Liefert lokalisierte Strings fuer das Experiment.
+ * Return localized strings for the experiment.
  */
 function i18n(key, substitutions = []){
   const localeData = EXTENSION?.localeData;
@@ -72,7 +105,7 @@ function i18n(key, substitutions = []){
 }
 
 /**
- * Liefert (und erzeugt) den Handler-Satz fuer einen gegebenen Kontext.
+ * Return (and create) the handler set for a given context.
  */
 function getHandlerSet(store, context){
   let set = store.get(context);
@@ -84,7 +117,7 @@ function getHandlerSet(store, context){
 }
 
 /**
- * Fuehrt alle Handler eines Sets mit dem gleichen Payload aus.
+ * Invoke all handlers in a set with the same payload.
  */
 async function dispatchHandlerSet(set, payload){
   if (!set || set.size === 0) return null;
@@ -102,7 +135,7 @@ async function dispatchHandlerSet(set, payload){
 }
 
 /**
- * Sendet Nutzlasten an alle registrierten Fenster-Kontexte.
+ * Broadcast payloads to all registered window contexts.
  */
 async function broadcastUtilityPayload(payload){
   if (!payload) return [];
@@ -445,19 +478,12 @@ switch (action){
 }
 }
 /**
- * Wandelt einen beliebigen Wert in einen String um (oder leeres Feld).
- */
-function safeString(value){
-  return typeof value === "string" && value.length ? value : null;
-}
-
-/**
- * Liest eine Eigenschaft aus einem Kalender-Item sicher aus.
+ * Read a calendar item property safely.
  */
 function safeItemProperty(item, prop){
   if (!item || typeof item.getProperty !== "function") return null;
   try{
-    return safeString(item.getProperty(prop));
+    return CalUtils.safeString(item.getProperty(prop));
   }catch(_){
     return null;
   }
@@ -465,40 +491,8 @@ function safeItemProperty(item, prop){
 
 
 /**
- * Konvertiert heterogene boolsche Eigenschaften in echte Booleans.
+ * Resolve the calendar item from an event dialog window context.
  */
-function parseBooleanProp(value){
-  if (typeof value === "boolean") return value;
-  if (typeof value === "string"){
-    const norm = value.trim().toLowerCase();
-    if (norm === "true" || norm === "1" || norm === "yes") return true;
-    if (norm === "false" || norm === "0" || norm === "no") return false;
-  }
-  return null;
-}
-
-function parseNumberProp(value){
-  if (typeof value === "number" && Number.isFinite(value)){
-    return value;
-  }
-  if (typeof value === "string"){
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    const parsed = parseInt(trimmed, 10);
-    return Number.isNaN(parsed) ? null : parsed;
-  }
-  return null;
-}
-
-function boolToProp(value){
-  if (typeof value === "string"){
-    const norm = value.trim().toLowerCase();
-    if (norm === "true" || norm === "1" || norm === "yes") return "TRUE";
-    if (norm === "false" || norm === "0" || norm === "no") return "FALSE";
-  }
-  return value ? "TRUE" : "FALSE";
-}
-
 function getCalendarItemFromWindow(win){
   try{
     if (!win) return null;
@@ -523,67 +517,13 @@ function getTalkMetadataFromWindow(win){
 }
 
 function setTalkMetadataOnWindow(win, meta = {}){
-  const item = getCalendarItemFromWindow(win);
-  if (!item || typeof item.setProperty !== "function"){
-    return { ok:false, error:"no_calendar_item" };
-  }
-  const setProp = (name, value) => {
-    try{
-      if (value == null || value === ""){
-        if (typeof item.deleteProperty === "function"){
-          item.deleteProperty(name);
-        }else{
-          item.setProperty(name, "");
-        }
-      }else{
-        item.setProperty(name, String(value));
-      }
-    }catch(_){}
-  };
-  if ("token" in meta) setProp("X-NCTALK-TOKEN", meta.token);
-  if ("url" in meta) setProp("X-NCTALK-URL", meta.url);
-  if ("lobbyEnabled" in meta) setProp("X-NCTALK-LOBBY", boolToProp(meta.lobbyEnabled));
-  if ("startTimestamp" in meta && meta.startTimestamp != null){
-    const ts = Number(meta.startTimestamp);
-    if (Number.isFinite(ts)){
-      setProp("X-NCTALK-START", String(Math.floor(ts)));
-    }
-  }
-  if ("eventConversation" in meta){
-    setProp("X-NCTALK-EVENT", meta.eventConversation ? "event" : "standard");
-  }
-  if ("objectId" in meta) setProp("X-NCTALK-OBJECTID", meta.objectId);
-  if ("delegateId" in meta) setProp("X-NCTALK-DELEGATE", meta.delegateId);
-  if ("delegateName" in meta) setProp("X-NCTALK-DELEGATE-NAME", meta.delegateName);
-  if ("delegated" in meta) setProp("X-NCTALK-DELEGATED", boolToProp(!!meta.delegated));
-  return { ok:true };
+  return CalUtils.setTalkMetadataOnWindow(win, meta);
 }
 
 function getEventSnapshotFromWindow(win){
   const metaResult = getTalkMetadataFromWindow(win);
   const metadata = metaResult.ok ? (metaResult.metadata || {}) : {};
-  const docs = collectEventDocs(win);
-  const titleField = findField(docs, [
-    "#item-title",
-    'input[id^="event-grid-title"]',
-    'input[type="text"]'
-  ]);
-  const locationField = findField(docs, [
-    'input[aria-label="Ort"]',
-    'input[placeholder="Ort"]',
-    'input#item-location',
-    'input[name="location"]',
-    'textbox[id*="location"]'
-  ]);
-  const descField = findDescriptionFieldInDocs(docs);
-  const event = {
-    title: getFieldValue(titleField) || metadata.title || "",
-    location: getFieldValue(locationField) || "",
-    description: getFieldValue(descField) || "",
-    startTimestamp: metadata.startTimestamp || null,
-    endTimestamp: metadata.endTimestamp || null
-  };
-  return { ok:true, event, metadata };
+  return CalUtils.getEventSnapshotFromWindow(win, { metadata });
 }
 
 function applyEventFieldsOnWindow(win, payload = {}){
@@ -594,41 +534,20 @@ function applyEventFieldsOnWindow(win, payload = {}){
     hasLocation: !!payload?.location,
     hasDescription: typeof payload?.description === "string"
   });
-  const docs = collectEventDocs(win);
-  const titleField = findField(docs, [
-    "#item-title",
-    'input[id^="event-grid-title"]',
-    'input[type="text"]'
-  ]);
-  const locationField = findField(docs, [
-    'input[aria-label="Ort"]',
-    'input[placeholder="Ort"]',
-    'input#item-location',
-    'input[name="location"]',
-    'textbox[id*="location"]'
-  ]);
-  const descField = findDescriptionFieldInDocs(docs);
-  if (typeof payload.title === "string" && titleField){
-    setFieldValue(titleField, payload.title);
-  }
-  if (typeof payload.location === "string" && locationField){
-    setFieldValue(locationField, payload.location);
-  }
-  if (typeof payload.description === "string" && descField){
-    setFieldValue(descField, payload.description, { preferExec:true });
-  }
+  const result = CalUtils.applyEventFieldsOnWindow(win, payload, { preferExecForDescription: true });
+  const applied = result?.applied || {};
   try{
     win?.NCTalkLog?.("applyEventFields", {
-      titleApplied: !!titleField,
-      locationApplied: !!locationField,
-      descriptionApplied: !!descField
+      titleApplied: !!applied.title,
+      locationApplied: !!applied.location,
+      descriptionApplied: !!applied.description
     });
   }catch(_){}
-  return { ok:true };
+  return result || { ok:false, error:"apply_failed" };
 }
 
 /**
- * Extrahiert Talk-spezifische Metadaten aus einem Kalender-Item.
+ * Extract Talk-specific metadata from a calendar item.
  */
 function extractTalkMetadataFromItem(item){
   if (!item) return {};
@@ -637,10 +556,10 @@ function extractTalkMetadataFromItem(item){
     const num = Number(raw);
     return Number.isFinite(num) ? num : null;
   };
-  const title = safeString(item?.title) || (() => {
+  const title = CalUtils.safeString(item?.title) || (() => {
     try{
       if (typeof item.getProperty === "function"){
-        return safeString(item.getProperty("SUMMARY"));
+        return CalUtils.safeString(item.getProperty("SUMMARY"));
       }
     }catch(_){}
     return null;
@@ -650,7 +569,7 @@ function extractTalkMetadataFromItem(item){
   return {
     title,
     token: safeItemProperty(item, "X-NCTALK-TOKEN"),
-    lobbyEnabled: parseBooleanProp(safeItemProperty(item, "X-NCTALK-LOBBY")),
+    lobbyEnabled: CalUtils.parseBooleanProp(safeItemProperty(item, "X-NCTALK-LOBBY")),
     startTimestamp: startTs,
     endTimestamp: endTs,
     eventConversation: (() => {
@@ -661,18 +580,18 @@ function extractTalkMetadataFromItem(item){
     objectId: safeItemProperty(item, "X-NCTALK-OBJECTID"),
     delegateId: safeItemProperty(item, "X-NCTALK-DELEGATE"),
     delegateName: safeItemProperty(item, "X-NCTALK-DELEGATE-NAME"),
-    delegated: parseBooleanProp(safeItemProperty(item, "X-NCTALK-DELEGATED")),
-    delegateReady: parseBooleanProp(safeItemProperty(item, "X-NCTALK-DELEGATE-READY"))
+    delegated: CalUtils.parseBooleanProp(safeItemProperty(item, "X-NCTALK-DELEGATED")),
+    delegateReady: CalUtils.parseBooleanProp(safeItemProperty(item, "X-NCTALK-DELEGATE-READY"))
   };
 }
 
 /**
- * Markiert ein Item als verarbeitete Delegation.
+ * Mark an item as having its delegation applied.
  */
 function markDelegationApplied(item){
   try{
     if (!item || typeof item.clone !== "function") return false;
-    if (parseBooleanProp(safeItemProperty(item, "X-NCTALK-DELEGATED")) === true) return false;
+    if (CalUtils.parseBooleanProp(safeItemProperty(item, "X-NCTALK-DELEGATED")) === true) return false;
     const calendar = item.calendar;
     if (!calendar || typeof calendar.modifyItem !== "function") return false;
     const clone = item.clone();
@@ -744,7 +663,7 @@ async function triggerDelegationIfReady(item, meta, context = {}){
   return success;
 }
 /**
- * Liest den Talk-Link aus den Item-Eigenschaften aus.
+ * Extract the Talk link from item properties or text fields.
  */
 function extractTalkLinkFromItem(item){
   if (!item) return null;
@@ -757,13 +676,13 @@ function extractTalkLinkFromItem(item){
     };
   }
   const candidates = [];
-  const location = safeItemProperty(item, "LOCATION") || safeString(item.location);
+  const location = safeItemProperty(item, "LOCATION") || CalUtils.safeString(item.location);
   if (location) candidates.push(location);
-  const description = safeItemProperty(item, "DESCRIPTION") || safeString(item.description);
+  const description = safeItemProperty(item, "DESCRIPTION") || CalUtils.safeString(item.description);
   if (description) candidates.push(description);
   const url = safeItemProperty(item, "URL");
   if (url) candidates.push(url);
-  const summary = safeItemProperty(item, "SUMMARY") || safeString(item.title);
+  const summary = safeItemProperty(item, "SUMMARY") || CalUtils.safeString(item.title);
   if (summary && summary.includes("/call/")){
     candidates.push(summary);
   }
@@ -777,7 +696,7 @@ function extractTalkLinkFromItem(item){
 }
 
 /**
- * Gibt die UID eines Items zurueck (oder einen leeren String).
+ * Return the item UID when available.
  */
 function safeItemUid(item){
   if (!item) return null;
@@ -789,7 +708,7 @@ function safeItemUid(item){
     item?.parentItem?.uid
   ];
   for (const value of inputs){
-    if (safeString(value)){
+    if (CalUtils.safeString(value)){
       return String(value);
     }
   }
@@ -797,7 +716,7 @@ function safeItemUid(item){
 }
 
 /**
- * Konvertiert Date-Objekte zu UNIX-Sekunden.
+ * Convert date-like objects to unix seconds.
  */
 function getUnixSecondsFromDate(date){
   if (!date) return null;
@@ -820,7 +739,7 @@ function getUnixSecondsFromDate(date){
 }
 
 /**
- * Ermittelt den Startzeitpunkt eines Kalendereintrags.
+ * Resolve the event start timestamp from calendar item fields.
  */
 function extractStartTimestampFromItem(item){
   if (!item) return null;
@@ -830,128 +749,6 @@ function extractStartTimestampFromItem(item){
     if (value != null) return value;
   }
   return null;
-}
-
-function collectEventDocs(win){
-  const docs = [];
-  if (!win) return docs;
-  const pushDoc = (doc) => {
-    if (doc && docs.indexOf(doc) === -1){
-      docs.push(doc);
-    }
-  };
-  try{
-    pushDoc(win.document);
-  }catch(_){}
-  try{
-    const iframe = win.document?.getElementById("calendar-item-panel-iframe");
-    if (iframe?.contentDocument){
-      pushDoc(iframe.contentDocument);
-    }
-  }catch(_){}
-  return docs;
-}
-
-function findField(docs, selectors){
-  for (const doc of docs){
-    if (!doc || typeof doc.querySelector !== "function") continue;
-    for (const sel of selectors){
-      try{
-        const element = doc.querySelector(sel);
-        if (element) return element;
-      }catch(_){}
-    }
-  }
-  return null;
-}
-
-function findDescriptionFieldInDocs(docs){
-  for (const doc of docs){
-    try{
-      const host = doc.querySelector && doc.querySelector("editor#item-description");
-      let target = null;
-      if (host){
-        target = host.inputField || host.contentDocument?.body || host;
-      }
-      if (!target){
-        const fallbacks = [ "textarea#item-description", "textarea", "[contenteditable='true']", "div[role='textbox']" ];
-        for (const sel of fallbacks){
-          const el = doc.querySelector && doc.querySelector(sel);
-          if (el){
-            target = el;
-            break;
-          }
-        }
-      }
-      if (target) return target;
-    }catch(_){}
-  }
-  return null;
-}
-
-function dispatchInputEvent(field){
-  if (!field) return;
-  try{
-    const doc = field.ownerDocument || field.document;
-    const win = doc?.defaultView;
-    if (win){
-      const evt = new win.Event("input", { bubbles:true });
-      field.dispatchEvent(evt);
-    }
-  }catch(_){}
-}
-
-function setFieldValue(field, value, opts = {}){
-  if (!field) return;
-  const doc = field.ownerDocument || field.document || field.contentDocument || null;
-  const execPreferred = opts.preferExec === true;
-
-  const tryExecCommand = () => {
-    if (!doc || typeof doc.execCommand !== "function"){
-      return false;
-    }
-    try{
-      field.focus?.();
-      doc.execCommand("selectAll", false, null);
-      doc.execCommand("insertText", false, value);
-      return true;
-    }catch(_){
-      return false;
-    }
-  };
-
-  if (execPreferred && tryExecCommand()){
-    dispatchInputEvent(field);
-    return;
-  }
-
-  if ("value" in field){
-    try{ field.focus?.(); }catch(_){}
-    field.value = value;
-    dispatchInputEvent(field);
-    return;
-  }
-
-  if ((field.isContentEditable || field.tagName?.toLowerCase() === "body") && tryExecCommand()){
-    dispatchInputEvent(field);
-    return;
-  }
-
-  if (field.textContent !== undefined){
-    field.textContent = value;
-    dispatchInputEvent(field);
-  }
-}
-
-function getFieldValue(field){
-  if (!field) return "";
-  if ("value" in field){
-    return field.value || "";
-  }
-  if (field.textContent != null){
-    return field.textContent;
-  }
-  return "";
 }
 
 function extractEndTimestampFromItem(item){
@@ -965,7 +762,7 @@ function extractEndTimestampFromItem(item){
 }
 
 /**
- * Reagiert auf geloeschte Items und bereinigt Meta-Informationen.
+ * Handle deleted items and clean up metadata.
  */
 async function handleCalendarDelete(item){
   try{
@@ -985,7 +782,7 @@ async function handleCalendarDelete(item){
 }
 
 /**
- * Reagiert auf geaenderte Items und aktualisiert Metadaten.
+ * Handle modified items and update lobby metadata.
  */
 async function handleCalendarModify(newItem, oldItem){
   try{
@@ -1033,7 +830,7 @@ async function handleCalendarModify(newItem, oldItem){
   }
 }
 /**
- * Installiert Observer fuer alle verfuegbaren Kalender.
+ * Install observers for all available calendars.
  */
 function installCalendarObservers(){
   if (!CAL || !CAL.manager) return null;
@@ -1079,7 +876,7 @@ function installCalendarObservers(){
   };
 
   /**
-   * Wird aufgerufen, wenn ein Kalender hinzugefügt wird.
+   * Register a calendar observer when a calendar is added.
    */
   function addCalendar(calendar){
     if (!calendar || tracked.has(calendar)) return;
@@ -1092,7 +889,7 @@ function installCalendarObservers(){
   }
 
   /**
-   * Wird aufgerufen, wenn ein Kalender entfernt wird.
+   * Remove the calendar observer when a calendar is removed.
    */
   function removeCalendar(calendar){
     if (!calendar || !tracked.has(calendar)) return;
@@ -1130,7 +927,7 @@ function installCalendarObservers(){
 }
 
 /**
- * Stellt sicher, dass die Kalender-Observer installiert sind.
+ * Ensure calendar observers are installed.
  */
 function ensureCalendarObservers(){
   if (stopCalendarObservers || !CAL || !CAL.manager) return;
@@ -1138,7 +935,7 @@ function ensureCalendarObservers(){
 }
 
 /**
- * Prueft, ob es sich um ein Kalender-Event-Dialogfenster handelt.
+ * Check whether a window is a calendar event dialog.
  */
 function isEventDialogWindow(win){
   if (!win) return false;
@@ -1157,7 +954,7 @@ function isEventDialogWindow(win){
 }
 
 /**
- * Erstellt die API, die dem Fenster als Bridge zur Verfuegung steht.
+ * Create the bridge API exposed to the dialog window.
  */
 function createBridgeAPI(context, init = {}){
   const state = {
@@ -1207,7 +1004,7 @@ function createBridgeAPI(context, init = {}){
 }
 
 /**
- * Loest im Ziel-Fenster ein Refresh-Event fuer die Bridge aus.
+ * Dispatch a bridge refresh event into the target window.
  */
 function dispatchBridgeRefresh(win){
   const eventCtor = win?.CustomEvent || win?.Event;
@@ -1217,13 +1014,15 @@ function dispatchBridgeRefresh(win){
 }
 
 /**
- * Integriert die Bridge in ein neu geoeffnetes Eventfenster.
+ * Inject the bridge into a newly opened event window.
  */
 function installBridge(win, context, init){
   if (!win || !win.document) return false;
   const windowId = ensureWindowId(win);
   const initWithId = Object.assign({}, init, { windowId });
   const api = createBridgeAPI(context, initWithId);
+  ensureCalUtils(context);
+  ensureCalUtilsInWindow(win);
   if (win.NCTalkBridge && typeof win.NCTalkBridge.updateInit === "function"){
     win.NCTalkBridge.updateInit(initWithId);
     dispatchBridgeRefresh(win);
@@ -1253,7 +1052,7 @@ function installBridge(win, context, init){
 }
 
 /**
- * Registriert Listener fuer neue/geschlossene Fenster.
+ * Register listeners for new and closing windows.
  */
 function registerWindowListener(context, init){
   const listener = {
@@ -1316,6 +1115,7 @@ this.calToolbar = class extends ExtensionCommon.ExtensionAPI {
     context.callOnClose(() => {
       ACTIVE_CONTEXTS.delete(context);
     });
+    ensureCalUtils(context);
     const createEvent = new ExtensionCommon.EventManager({
       context,
       name: "calToolbar.onCreateRequest",
@@ -1387,7 +1187,7 @@ function persistTalkStart(item, startTimestamp){
     if (typeof startTimestamp !== "number" || !Number.isFinite(startTimestamp)) return false;
     const calendar = item.calendar;
     if (!calendar || typeof calendar.modifyItem !== "function") return false;
-    const current = parseNumberProp(safeItemProperty(item, "X-NCTALK-START"));
+    const current = CalUtils.parseNumberProp(safeItemProperty(item, "X-NCTALK-START"));
     if (current === Math.floor(startTimestamp)){
       return false;
     }

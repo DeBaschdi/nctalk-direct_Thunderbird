@@ -4,15 +4,7 @@
  * See LICENSE.txt for details.
  */
 /**
- * Ladet die in den Add-on-Optionen hinterlegten Nextcloud-Credentials
- * und bereinigt dabei z.B. überflüssige Slashes in der Basis-URL.
- * @returns {Promise<{baseUrl:string,user:string,appPass:string}>}
- */
-
-
-/**
- * Liefert Add-on-Credentials. Bevorzugt NCCore.getOpts(),
- * fällt aber auf lokale Speicherabfrage zurück, wenn NCCore hier nicht bekannt ist.
+ * Return stored add-on credentials via NCCore.getOpts().
  * @returns {Promise<{baseUrl:string,user:string,appPass:string,debugEnabled:boolean,authMode:string}>}
  */
 async function getOpts(){
@@ -27,9 +19,9 @@ const EVENT_SUPPORT_CACHE = {
 const EVENT_SUPPORT_TTL = 5 * 60 * 1000;
 
 /**
- * Schreibt die ermittelte Event-Unterstützung in den lokalen Cache.
- * @param {boolean|null} value - Ergebnis der Event-Fähigkeit (true/false/null)
- * @param {string} reason - Erläuterung für Logs und Debugging
+ * Store the resolved event support state in the local cache.
+ * @param {boolean|null} value - Resolved event capability (true/false/null)
+ * @param {string} reason - Short hint for logs and debugging
  */
 function noteEventSupport(value, reason){
   EVENT_SUPPORT_CACHE.value = value;
@@ -38,17 +30,16 @@ function noteEventSupport(value, reason){
 }
 
 /**
- * Convenience-Funktion, um Event-Unterstützung negativ zu cachen.
- * @param {string} reason - Erläuterung, weshalb Event-Konversationen nicht verfügbar sind
+ * Cache a negative event support result with a reason.
+ * @param {string} reason - Why event conversations are unavailable
  */
 function markEventSupportUnsupported(reason){
   noteEventSupport(false, reason || "");
 }
 
 /**
- * Analysiert den Capabilities-Response von Talk/Cloud
- * und versucht ein Boolean für Event-Konversationen abzuleiten.
- * @param {object} data - Capability-Ausschnitt des Servers
+ * Parse Talk/Cloud capabilities and infer event conversation support.
+ * @param {object} data - Capabilities payload subset
  * @returns {{status:boolean|null, hint:string}}
  */
 function parseEventSupportFlag(data){
@@ -96,9 +87,9 @@ function parseEventSupportFlag(data){
 }
 
 /**
- * Extrahiert eine grobe Major-Version aus verschiedenen Feldformaten.
- * @param {* } value - beliebiges Versionsfeld
- * @returns {number|null} - Major-Version oder null
+ * Extract a major version from various field formats.
+ * @param {*} value - Version field in string/number/object form
+ * @returns {number|null} - Major version or null
  */
 function parseMajorVersion(value){
   if (value == null) return null;
@@ -124,9 +115,9 @@ function parseMajorVersion(value){
 }
 
 /**
- * Fragt die Talk-spezifischen Capabilities ab und liefert ein einheitliches Ergebnis.
- * @param {string} url - vollständiger Endpunkt
- * @param {object} headers - vorbereitete OCS-Header
+ * Request Talk capabilities and normalize event support status.
+ * @param {string} url - Full endpoint URL
+ * @param {object} headers - Prepared OCS headers
  * @returns {Promise<{supported:boolean|null, reason:string}>}
  */
 async function requestTalkCapabilities(url, headers){
@@ -165,9 +156,9 @@ async function requestTalkCapabilities(url, headers){
 }
 
 /**
- * Fragt die generischen Nextcloud Capabilities ab und interpretiert sie bzgl. Event-Unterstützung.
- * @param {string} baseUrl - bereinigte Nextcloud Basis-URL
- * @param {object} headers - vorbereitete OCS-Header
+ * Request core capabilities and interpret them for event support.
+ * @param {string} baseUrl - Normalized Nextcloud base URL
+ * @param {object} headers - Prepared OCS headers
  * @returns {Promise<{supported:boolean|null, reason:string}>}
  */
 async function requestCoreCapabilities(baseUrl, headers){
@@ -217,7 +208,7 @@ async function requestCoreCapabilities(baseUrl, headers){
 }
 
 /**
- * Ermittelt (mit Cache) ob Event-Konversationen unterstützt werden.
+ * Resolve event conversation support with caching.
  * @returns {Promise<{supported:boolean|null, reason:string}>}
  */
 async function getEventConversationSupport(){
@@ -288,7 +279,7 @@ async function getEventConversationSupport(){
   return { supported:null, reason: aggregatedReason };
 }
 /**
- * Cache fÃ¼r System-Adressbuch-EintrÃ¤ge, um CardDAV-Traffic zu begrenzen.
+ * Cache for system addressbook entries to limit CardDAV traffic.
  * Structure:
  * {
  *   contacts: Array<Contact>,
@@ -306,13 +297,8 @@ const SYSTEM_ADDRESSBOOK_CACHE = {
 const SYSTEM_ADDRESSBOOK_TTL = 5 * 60 * 1000;
 
 /**
- * Entfernt vCard-Escaping (z.B. \n, \\, \;) aus einem Feld.
- * @param {string} value
- * @returns {string}
- */
-/**
- * Dekodiert Escapes innerhalb einer vCard-Zeile.
- * @param {string} value - roher vCard-Inhalt nach dem Doppelpunkt
+ * Decode escaped values inside a vCard field payload.
+ * @param {string} value - Raw vCard content after the colon
  * @returns {string}
  */
 function decodeVCardValue(value){
@@ -325,13 +311,8 @@ function decodeVCardValue(value){
 }
 
 /**
- * Klappt gefaltete vCard-Zeilen (RFC 6350) wieder auf.
- * @param {string} data
- * @returns {string[]}
- */
-/**
- * Entfernt RFC-6350-Zeilenumbrüche innerhalb einer vCard.
- * @param {string} data - vollständiger vCard-Export
+ * Unfold RFC 6350 wrapped vCard lines.
+ * @param {string} data - Full vCard export
  * @returns {string[]}
  */
 function unfoldVCardLines(data){
@@ -351,8 +332,8 @@ function unfoldVCardLines(data){
   return unfolded;
 }
 /**
- * Erstellt aus dem vCard-Export des Systemadressbuchs eine strukturierte Kontaktliste.
- * @param {string} data - Rohdaten aus dem CardDAV-Export
+ * Parse the system addressbook vCard export into a contact list.
+ * @param {string} data - Raw CardDAV export
  * @returns {Array<{id:string,label:string,email:string,idLower:string,labelLower:string,emailLower:string,avatarDataUrl:string|null}>}
  */
 function parseSystemAddressbook(data){
@@ -505,7 +486,7 @@ function createPhotoDataUrl(photo){
 }
 
 /**
- * Liefert ein Fensterobjekt, das DOM-APIs (Canvas etc.) bereitstellt.
+ * Return a window object that provides DOM APIs (Canvas, etc.).
  * @returns {Window|Global|null}
  */
 function getHiddenWindow(){
@@ -526,7 +507,7 @@ function getHiddenWindow(){
   return null;
 }
 /**
- * Erstellt einen Canvas für Imaging-Operationen – bevorzugt OffscreenCanvas.
+ * Create a scratch canvas for image work, preferring OffscreenCanvas.
  * @param {number} width
  * @param {number} height
  * @returns {HTMLCanvasElement|OffscreenCanvas}
@@ -549,8 +530,8 @@ function createScratchCanvas(width, height){
 
 
 /**
- * Lädt und cached das Nextcloud-Systemadressbuch als strukturierte Liste.
- * @param {boolean} force - true erzwingt einen frischen Abruf
+ * Load and cache the Nextcloud system addressbook as a contact list.
+ * @param {boolean} force - Force a refresh when true
  * @returns {Promise<Array<{id:string,label:string,email:string,idLower:string,labelLower:string,emailLower:string,avatarDataUrl:string|null}>>}
  */
 async function getSystemAddressbookContacts(force = false){
@@ -571,7 +552,7 @@ async function getSystemAddressbookContacts(force = false){
   const auth = "Basic " + btoa(user + ":" + appPass);
   const base = baseUrl.replace(/\/$/,"");
   L("system addressbook fetch", { base, user });
-  // Zugriff auf das serverseitige System-Adressbuch (CardDAV) â€“ erfordert remote.php-Berechtigung.
+// Access to the server-side system addressbook (CardDAV) requires remote.php permission.
   const addressUrl = base + "/remote.php/dav/addressbooks/users/" + encodeURIComponent(user) + "/z-server-generated--system/?export";
   const res = await fetch(addressUrl, {
     method: "GET",
@@ -596,12 +577,7 @@ async function getSystemAddressbookContacts(force = false){
 }
 
 /**
- * Filtert Kontakte aus dem System-Adressbuch anhand eines Suchbegriffs.
- * @param {{searchTerm?:string, limit?:number, forceRefresh?:boolean}} [param0]
- * @returns {Promise<Array<{id:string,label:string,email:string,avatarDataUrl:string|null}>>}
- */
-/**
- * Filtert Kontakte aus dem Systemadressbuch nach Suchbegriff und Limit.
+ * Filter system addressbook contacts by term and limit.
  * @param {{searchTerm?:string, limit?:number, forceRefresh?:boolean}} param0
  * @returns {Promise<Array<{id:string,label:string,email:string,avatarDataUrl:string|null}>>}
  */
@@ -631,16 +607,20 @@ async function searchSystemAddressbook({ searchTerm = "", limit = 200, forceRefr
   }));
 }
 
-/** Erzeugt einen einfachen Zufallstoken für Pseudo-Fallbacks. */
+/**
+ * Generate a simple random token for pseudo fallbacks.
+ */
 function randToken(len=10){ const a="abcdefghijklmnopqrstuvwxyz0123456789"; let s=""; for(let i=0;i<len;i++) s+=a[Math.floor(Math.random()*a.length)]; return s; }
-/** Trimmt und normalisiert Raumbeschreibungen. */
+/**
+ * Trim and normalize room descriptions.
+ */
 function sanitizeDescription(desc){
   if (!desc) return "";
   return String(desc).trim();
 }
 
 /**
- * Fügt optionale Informationen (Talk-Link & Passwort) zu einer Beschreibung zusammen.
+ * Combine a base description with optional Talk link and password.
  */
 function buildRoomDescription(baseDescription, url, password){
   const parts = [];
@@ -694,7 +674,7 @@ function buildStandardTalkDescription(url, password){
 }
 
 /**
- * Erstellt (inkl. Fallbacks) einen Talk-Raum mit optionaler Event-Bindung.
+ * Create a Talk room with optional event binding and fallbacks.
  * @returns {Promise<{url:string,token:string,fallback:boolean,reason:string|null,description:string}>}
  */
 async function createTalkPublicRoom({
@@ -904,7 +884,7 @@ async function createTalkPublicRoom({
   throw localizedError("error_room_create_failed");
 }
 /**
- * Aktualisiert den Lobby-Zustand (inkl. Startzeit) eines bestehenden Talk-Raums.
+ * Update lobby state (and optional start time) for an existing room.
  */
 async function updateTalkLobby({ token, enableLobby, startTimestamp } = {}){
   if (!token) throw localizedError("error_room_token_missing");
@@ -937,7 +917,7 @@ async function updateTalkLobby({ token, enableLobby, startTimestamp } = {}){
   return true;
 }
 /**
- * Löscht einen Talk-Raum via OCS-API. 404 wird als Erfolg interpretiert.
+ * Delete a Talk room via OCS; 404 is treated as success.
  */
 async function deleteTalkRoom({ token } = {}){
   if (!token) throw localizedError("error_room_token_missing");
@@ -973,12 +953,9 @@ async function deleteTalkRoom({ token } = {}){
 }
 
 /**
- * Ruft Teilnehmer eines Talk-Raums ab. 404 wird als "keine Daten" interpretiert.
+ * Fetch room participants, including moderator info when available.
  * @param {{token:string}} param0
  * @returns {Promise<object[]>}
- */
-/**
- * Ruft Teilnehmerliste eines Raums ab (inkl. Moderatorinformation).
  */
 async function getTalkRoomParticipants({ token } = {}){
   if (!token) throw localizedError("error_room_token_missing");
@@ -1007,7 +984,7 @@ async function getTalkRoomParticipants({ token } = {}){
   return list;
 }
 /**
- * Fügt einen Benutzer über die OCS-API zum Talk-Raum hinzu.
+ * Add a user to the Talk room via the OCS API.
  */
 async function addTalkParticipant({ token, actorId, source = "users" } = {}){
   if (!token || !actorId) throw localizedError("error_token_or_actor_missing");
@@ -1046,7 +1023,7 @@ async function addTalkParticipant({ token, actorId, source = "users" } = {}){
   return added || null;
 }
 /**
- * Ernennt einen vorhandenen Raumteilnehmer zum Moderator.
+ * Promote an existing participant to moderator.
  */
 async function promoteTalkModerator({ token, attendeeId } = {}){
   if (!token || typeof attendeeId !== "number") throw localizedError("error_moderator_id_missing");
@@ -1083,7 +1060,7 @@ async function promoteTalkModerator({ token, attendeeId } = {}){
   return true;
 }
 /**
- * Entfernt den authentifizierten Benutzer aus dem Talk-Raum (self-leave).
+ * Remove the authenticated user from the room (self-leave).
  */
 async function leaveTalkRoom({ token } = {}){
   if (!token) throw localizedError("error_room_token_missing");
@@ -1111,7 +1088,7 @@ async function leaveTalkRoom({ token } = {}){
   return true;
 }
 /**
- * Überträgt die Moderation an einen anderen Benutzer (inkl. optionalem Selbst-Verlassen).
+ * Delegate moderation to another user, optionally leaving the room.
  */
 async function delegateRoomModerator({ token, newModerator } = {}){
   if (!token || !newModerator) throw localizedError("error_delegation_data_missing");
@@ -1145,4 +1122,10 @@ async function delegateRoomModerator({ token, newModerator } = {}){
   return { leftSelf: false, delegate: targetId };
 }
 
+const NCTalkCore = {
+  buildStandardTalkDescription
+};
 
+if (typeof globalThis !== "undefined"){
+  globalThis.NCTalkCore = NCTalkCore;
+}

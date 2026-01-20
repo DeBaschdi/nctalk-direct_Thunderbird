@@ -9,9 +9,13 @@
   const POPUP_CONTENT_HEIGHT = 640;
   const MIN_CONTENT_HEIGHT = POPUP_CONTENT_HEIGHT;
   const CONTENT_MARGIN = 0;
-  let resizeTimer = null;
   let layoutObserver = null;
-  let boundsPromise = null;
+  const popupSizer = window.NCTalkPopupSizing?.createPopupSizer({
+    fixedWidth: POPUP_CONTENT_WIDTH,
+    minHeight: MIN_CONTENT_HEIGHT,
+    margin: CONTENT_MARGIN,
+    getContentHeight: () => getContentHeight()
+  });
   let pendingUploadScroll = null;
   const TOTAL_STEPS = 4;
   const LOG_SOURCE = 'filelinkWizard';
@@ -49,7 +53,7 @@
 
   async function init(){
     cacheElements();
-    translatePage();
+    NCTalkDomI18n.translatePage(i18n, { titleKey: "filelink_dialog_title" });
     state.tabId = parseTabId();
     attachEvents();
     try{
@@ -108,29 +112,6 @@
     dom.cancelBtn = document.getElementById('cancelBtn');
   }
 
-  function translatePage(){
-    document.querySelectorAll('[data-i18n]').forEach((node) => {
-      const key = node.dataset.i18n;
-      if (!key) return;
-      const message = i18n(key);
-      if (message){
-        node.textContent = message;
-      }
-    });
-    document.querySelectorAll('[data-i18n-placeholder]').forEach((node) => {
-      const key = node.dataset.i18nPlaceholder;
-      if (!key) return;
-      const message = i18n(key);
-      if (message){
-        node.setAttribute('placeholder', message);
-      }
-    });
-    const title = i18n('filelink_dialog_title');
-    if (title){
-      document.title = title;
-    }
-  }
-
   function parseTabId(){
     const params = new URLSearchParams(window.location.search);
     const raw = params.get('tabId');
@@ -151,7 +132,7 @@
     dom.passwordToggle.addEventListener('change', () => {
       dom.passwordFields.classList.toggle('hidden', !dom.passwordToggle.checked);
       if (dom.passwordToggle.checked && !dom.passwordInput.value){
-        dom.passwordInput.value = generatePassword();
+        dom.passwordInput.value = NCTalkPassword.generatePassword();
       }
       invalidateUpload();
       log('passwort toggle', dom.passwordToggle.checked);
@@ -160,7 +141,7 @@
     dom.passwordGenerate.addEventListener('click', () => {
       dom.passwordToggle.checked = true;
       dom.passwordFields.classList.remove('hidden');
-      dom.passwordInput.value = generatePassword();
+      dom.passwordInput.value = NCTalkPassword.generatePassword();
       invalidateUpload();
       log('passwort generiert');
     });
@@ -293,7 +274,7 @@
     if (stored.filelinkDefaultPassword !== undefined){
       state.defaults.passwordEnabled = !!stored.filelinkDefaultPassword;
     }
-    state.defaults.expireDays = normalizeExpireDays(stored.filelinkDefaultExpireDays);
+    state.defaults.expireDays = NCTalkTextUtils.normalizeExpireDays(stored.filelinkDefaultExpireDays, DEFAULT_EXPIRE_DAYS);
   }
   function setDefaultShareName(){
     if (!dom.shareName.value){
@@ -309,7 +290,7 @@
     dom.passwordFields.classList.toggle('hidden', !dom.passwordToggle.checked);
     if (dom.passwordToggle.checked){
       if (!dom.passwordInput.value){
-        dom.passwordInput.value = generatePassword();
+        dom.passwordInput.value = NCTalkPassword.generatePassword();
       }
     }else{
       dom.passwordInput.value = '';
@@ -523,7 +504,7 @@
       return `<span>${i18n('filelink_status_done_row')}</span>`;
     }
     if (entry.status === 'error'){
-      return `<span title="${escapeHtml(entry.error || '')}">${i18n('filelink_status_error_row')}</span>`;
+      return `<span title="${NCTalkTextUtils.escapeHtml(entry.error || '')}">${i18n('filelink_status_error_row')}</span>`;
     }
     return `<span>${i18n('filelink_status_waiting')}</span>`;
   }
@@ -848,46 +829,15 @@
     return state.shareContext;
   }
 
-  function generatePassword(){
-    const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-    const lower = 'abcdefghijkmnopqrstuvwxyz';
-    const digits = '23456789';
-    const symbols = '!@#$%&*-_=+?';
-    const all = upper + lower + digits + symbols;
-    const pick = (pool) => pool[Math.floor(Math.random() * pool.length)];
-    let pwd = pick(upper) + pick(lower) + pick(symbols) + pick(digits);
-    while (pwd.length < 10){
-      pwd += pick(all);
-    }
-    return shuffle(pwd);
-  }
-
   function getDefaultExpireDate(){
-    const days = normalizeExpireDays(state.defaults.expireDays);
+    const days = NCTalkTextUtils.normalizeExpireDays(state.defaults.expireDays, DEFAULT_EXPIRE_DAYS);
     const base = new Date();
     base.setDate(base.getDate() + days);
     return base.toISOString().slice(0, 10);
   }
 
-  function normalizeExpireDays(value){
-    const parsed = parseInt(value, 10);
-    if (Number.isFinite(parsed) && parsed > 0){
-      return parsed;
-    }
-    return DEFAULT_EXPIRE_DAYS;
-  }
-
   function getDefaultShareName(){
     return i18n('filelink_share_default') || 'Freigabename';
-  }
-
-  function shuffle(value){
-    const chars = value.split('');
-    for (let i = chars.length - 1; i > 0; i--){
-      const j = Math.floor(Math.random() * (i + 1));
-      [chars[i], chars[j]] = [chars[j], chars[i]];
-    }
-    return chars.join('');
   }
 
   function joinRelative(...segments){
@@ -895,15 +845,6 @@
       .map((segment) => String(segment || '').replace(/^[\\/]+|[\\/]+$/g, ''))
       .filter(Boolean)
       .join('/');
-  }
-
-  function escapeHtml(value){
-    if (value == null) return '';
-    return String(value)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
   }
 
   function log(){
@@ -1004,128 +945,19 @@
     return true;
   }
   function setupWindowSizing(){
-    scheduleSizeUpdate();
-    window.addEventListener('load', scheduleSizeUpdate, { once:true });
-    window.addEventListener('resize', scheduleSizeUpdate);
+    if (!popupSizer){
+      return;
+    }
+    popupSizer.scheduleSizeUpdate();
+    window.addEventListener('load', popupSizer.scheduleSizeUpdate, { once:true });
+    window.addEventListener('resize', popupSizer.scheduleSizeUpdate);
     if (typeof ResizeObserver === 'function'){
-      layoutObserver = new ResizeObserver(() => scheduleSizeUpdate());
+      layoutObserver = new ResizeObserver(() => popupSizer.scheduleSizeUpdate());
       layoutObserver.observe(document.documentElement || document.body);
     }
   }
 
-  function scheduleSizeUpdate(){
-    if (resizeTimer){
-      window.clearTimeout(resizeTimer);
-    }
-    resizeTimer = window.setTimeout(() => {
-      enforceFixedWidth();
-      enforceMinHeight();
-      enforceWindowBoundsAsync();
-      resizeTimer = null;
-    }, 75);
-  }
-
-  function getFrameWidth(){
-    if (typeof window.outerWidth === 'number' && typeof window.innerWidth === 'number'){
-      return Math.max(0, window.outerWidth - window.innerWidth);
-    }
-    const docWidth = document.documentElement?.clientWidth || document.body?.clientWidth || POPUP_CONTENT_WIDTH;
-    const winWidth = typeof window.outerWidth === 'number' ? window.outerWidth : docWidth;
-    return Math.max(0, winWidth - docWidth);
-  }
-
-  function getFrameHeight(){
-    if (typeof window.outerHeight === 'number' && typeof window.innerHeight === 'number'){
-      return Math.max(0, window.outerHeight - window.innerHeight);
-    }
-    const docHeight = document.documentElement?.clientHeight || document.body?.clientHeight || MIN_CONTENT_HEIGHT;
-    const winHeight = typeof window.outerHeight === 'number' ? window.outerHeight : docHeight;
-    return Math.max(0, winHeight - docHeight);
-  }
-
-  function enforceFixedWidth(){
-    try{
-      const frame = getFrameWidth();
-      const targetOuter = POPUP_CONTENT_WIDTH + frame;
-      const currentOuter = typeof window.outerWidth === 'number'
-        ? window.outerWidth
-        : (window.innerWidth + frame);
-      if (Math.abs(currentOuter - targetOuter) > 2){
-        const outerHeight = typeof window.outerHeight === 'number'
-          ? window.outerHeight
-          : (window.innerHeight + getFrameHeight());
-        window.resizeTo(targetOuter, outerHeight);
-      }
-    }catch(_){ }
-  }
-
-  function enforceMinHeight(){
-    try{
-      const docHeight = getContentHeight();
-      const targetInner = Math.max(MIN_CONTENT_HEIGHT, docHeight + CONTENT_MARGIN);
-      const frame = getFrameHeight();
-      const targetOuter = targetInner + frame;
-      const currentOuter = typeof window.outerHeight === 'number'
-        ? window.outerHeight
-        : (window.innerHeight + frame);
-      if (Math.abs(currentOuter - targetOuter) > 6){
-        const width = typeof window.outerWidth === 'number'
-          ? window.outerWidth
-          : (POPUP_CONTENT_WIDTH + getFrameWidth());
-        window.resizeTo(width, targetOuter);
-      }
-    }catch(_){ }
-  }
-
   function getContentHeight(){
     return POPUP_CONTENT_HEIGHT;
-  }
-
-  function getDesiredOuterSize(){
-    const frameWidth = getFrameWidth();
-    const frameHeight = getFrameHeight();
-    const desiredWidth = POPUP_CONTENT_WIDTH + frameWidth;
-    const docHeight = getContentHeight();
-    const desiredInnerHeight = Math.max(MIN_CONTENT_HEIGHT, docHeight + CONTENT_MARGIN);
-    const desiredHeight = desiredInnerHeight + frameHeight;
-    return { desiredWidth, desiredHeight };
-  }
-
-  function enforceWindowBoundsAsync(){
-    if (!browser?.windows?.getCurrent || !browser?.windows?.update){
-      return;
-    }
-    if (boundsPromise){
-      return;
-    }
-    boundsPromise = (async () => {
-      try{
-        const { desiredWidth, desiredHeight } = getDesiredOuterSize();
-        const win = await browser.windows.getCurrent();
-        if (!win){
-          boundsPromise = null;
-          return;
-        }
-        const updates = {};
-        const currentWidth = win.width ?? desiredWidth;
-        const currentHeight = win.height ?? desiredHeight;
-        if (win.state === 'maximized'){
-          updates.state = 'normal';
-        }
-        if (Math.abs(currentWidth - desiredWidth) > 2){
-          updates.width = desiredWidth;
-        }
-        if (Math.abs(currentHeight - desiredHeight) > 6){
-          updates.height = desiredHeight;
-        }
-        if (Object.keys(updates).length){
-          if (!updates.state){
-            updates.state = 'normal';
-          }
-          await browser.windows.update(win.id, updates);
-        }
-      }catch(_){ }
-      boundsPromise = null;
-    })();
   }
 })();

@@ -1,4 +1,3 @@
-[Deutsch](README.md) | [English](README.en.md)
 # Nextcloud Enterprise for Thunderbird 
 
 Nextcloud Enterprise for Thunderbird verbindet Ihr Thunderbird direkt mit Nextcloud Talk und der sicheren Nextcloud-Freigabe. Ein einziger Klick öffnet einen modernen Wizard, erstellt automatisch Talk-Räume inklusive Lobby und Moderatoren Delegation und fügt den Meeting-Link mitsamt Passwort sauber in den Termin ein. Aus dem Verfassen-Fenster heraus erzeugen Sie auf Wunsch sofort eine Nextcloud-Freigabe inklusive Upload-Ordner, Ablaufdatum, Passwort und personalisierter Nachricht. Keine Copy-&-Paste-Orgien mehr, keine offenen Links in Mails: alles läuft in Thunderbird, alles wird sauber in Ihrer Nextcloud abgelegt.
@@ -16,7 +15,7 @@ Login-Flow V2, automatische Raumverfolgung sowie Debug-Logs in [NCBG], [NCUI], [
 - **ESR-ready** 
 Optimiert und getestet für Thunderbird ESR 140.X mit minimalem Experiment-Anteil.
 
-## Was ist neu in 2.2.0?
+## Was ist neu in 2.2.1?
 
 - Neues Branding Nextcloud Enterprise for Thunderbird.
 - Filelink Wizzard
@@ -45,7 +44,7 @@ Optimiert und getestet für Thunderbird ESR 140.X mit minimalem Experiment-Antei
 
 ## Installation
 1. Aktuelle XPI 
-extcloud-enterprise-2.2.0.xpi in Thunderbird installieren (Add-ons ? Zahnrad ? Add-on aus Datei installieren).
+extcloud-enterprise-2.2.1.xpi in Thunderbird installieren (Add-ons ? Zahnrad ? Add-on aus Datei installieren).
 2. Thunderbird neu starten.
 3. In den Add-on-Optionen Basis-URL, Benutzer und App-Passwort hinterlegen oder den Login Flow starten.
 

@@ -1,3 +1,8 @@
+/**
+ * Copyright (c) 2025 Bastian Kleinschmidt
+ * Licensed under the GNU Affero General Public License v3.0.
+ * See LICENSE.txt for details.
+ */
 (() => {
   "use strict";
 
@@ -8,21 +13,16 @@
     return;
   }
 
+  const CalUtils = window.NCTalkCalUtils;
+  if (!CalUtils){
+    console.error(`${LOG_CHANNEL} Shared utils missing.`);
+    return;
+  }
+
   const EVENT_DIALOG_URLS = [
     "chrome://calendar/content/calendar-event-dialog.xhtml",
     "chrome://calendar/content/calendar-event-dialog.xul"
   ];
-
-  const TALK_PROP_TOKEN = "X-NCTALK-TOKEN";
-  const TALK_PROP_URL = "X-NCTALK-URL";
-  const TALK_PROP_LOBBY = "X-NCTALK-LOBBY";
-  const TALK_PROP_START = "X-NCTALK-START";
-  const TALK_PROP_EVENT = "X-NCTALK-EVENT";
-  const TALK_PROP_OBJECT_ID = "X-NCTALK-OBJECTID";
-  const TALK_PROP_DELEGATE = "X-NCTALK-DELEGATE";
-  const TALK_PROP_DELEGATE_NAME = "X-NCTALK-DELEGATE-NAME";
-  const TALK_PROP_DELEGATED = "X-NCTALK-DELEGATED";
-  const TALK_PROP_DELEGATE_READY = "X-NCTALK-DELEGATE-READY";
 
   const STATE = {
     label: null,
@@ -61,278 +61,26 @@
     }catch(_){}
   }
 
-  function safeString(value){
-    return typeof value === "string" && value.length ? value : null;
-  }
-
-  function parseBooleanProp(value){
-    if (typeof value === "boolean") return value;
-    if (typeof value === "string"){
-      const norm = value.trim().toLowerCase();
-      if (norm === "true" || norm === "1" || norm === "yes") return true;
-      if (norm === "false" || norm === "0" || norm === "no") return false;
-    }
-    return value ? true : false;
-  }
-
-  function parseNumberProp(value){
-    const str = safeString(value);
-    if (!str) return null;
-    const parsed = parseInt(str, 10);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  function boolToProp(value){
-    if (typeof value === "string"){
-      const norm = value.trim().toLowerCase();
-      if (norm === "true" || norm === "1" || norm === "yes") return "TRUE";
-      if (norm === "false" || norm === "0" || norm === "no") return "FALSE";
-    }
-    return value ? "TRUE" : "FALSE";
-  }
-
-  function getCalendarItem(doc){
-    try{
-      const win = doc?.defaultView || window;
-      if (win?.calendarItem) return win.calendarItem;
-      if (win?.gEvent?.event) return win.gEvent.event;
-      if (Array.isArray(win?.arguments) && win.arguments[0]){
-        const arg = win.arguments[0];
-        if (arg.calendarItem) return arg.calendarItem;
-        if (arg.calendarEvent) return arg.calendarEvent;
-      }
-    }catch(_){}
-    return null;
-  }
-
-  function collectEventDocs(doc){
-    const docs = [];
-    try{ if (doc) docs.push(doc); }catch(_){}
-    try{
-      const iframe = doc?.getElementById?.("calendar-item-panel-iframe");
-      if (iframe?.contentDocument && iframe.contentDocument !== doc){
-        docs.push(iframe.contentDocument);
-      }
-    }catch(_){}
-    return docs;
-  }
-
-  function findField(docs, selectors){
-    for (const doc of docs){
-      if (!doc || typeof doc.querySelector !== "function") continue;
-      for (const sel of selectors){
-        try{
-          const el = doc.querySelector(sel);
-          if (el) return el;
-        }catch(_){}
-      }
-    }
-    return null;
-  }
-
-  function findDescriptionFieldInDocs(docs){
-    for (const doc of docs){
-      try{
-        const host = doc.querySelector && doc.querySelector("editor#item-description");
-        let target = null;
-        if (host){
-          target = host.inputField || host.contentDocument?.body || host;
-        }
-        if (!target){
-          const fallbacks = [
-            "textarea#item-description",
-            "textarea",
-            "[contenteditable='true']",
-            "div[role='textbox']"
-          ];
-          for (const sel of fallbacks){
-            const el = doc.querySelector && doc.querySelector(sel);
-            if (el){
-              target = el;
-              break;
-            }
-          }
-        }
-        if (target) return target;
-      }catch(_){}
-    }
-    return null;
-  }
-
-  function getFieldValue(field){
-    if (!field) return "";
-    if ("value" in field) return field.value || "";
-    if ("textContent" in field) return field.textContent || "";
-    return "";
-  }
-
-  function setFieldValue(field, value){
-    if (!field) return;
-    if ("value" in field){
-      field.focus?.();
-      field.value = value;
-      const doc = field.ownerDocument || document;
-      field.dispatchEvent?.(new doc.defaultView.Event("input", { bubbles:true }));
-      return;
-    }
-    field.textContent = value;
-  }
-
-  function readTalkMetadata(doc){
-    try{
-      const item = getCalendarItem(doc);
-      if (!item || typeof item.getProperty !== "function"){
-        return {};
-      }
-      const get = (name) => {
-        try{
-          return safeString(item.getProperty(name));
-        }catch(_){
-          return null;
-        }
-      };
-      return {
-        token: get(TALK_PROP_TOKEN),
-        url: get(TALK_PROP_URL),
-        lobbyEnabled: (() => {
-          const raw = get(TALK_PROP_LOBBY);
-          return raw == null ? null : parseBooleanProp(raw);
-        })(),
-        startTimestamp: parseNumberProp(get(TALK_PROP_START)),
-        eventConversation: (() => {
-          const raw = get(TALK_PROP_EVENT);
-          if (!raw) return null;
-          return raw.trim().toLowerCase() === "event";
-        })(),
-        objectId: get(TALK_PROP_OBJECT_ID),
-        delegateId: get(TALK_PROP_DELEGATE),
-        delegateName: get(TALK_PROP_DELEGATE_NAME),
-        delegated: (() => {
-          const raw = get(TALK_PROP_DELEGATED);
-          if (raw == null) return false;
-          return parseBooleanProp(raw);
-        })(),
-        delegateReady: (() => {
-          const raw = get(TALK_PROP_DELEGATE_READY);
-          if (raw == null) return null;
-          return parseBooleanProp(raw);
-        })()
-      };
-    }catch(_){
-      return {};
-    }
-  }
-
-  function writeTalkMetadata(doc, meta = {}){
-    const item = getCalendarItem(doc);
-    if (!item || typeof item.setProperty !== "function"){
-      return { ok:false, error:"no_calendar_item" };
-    }
-    const setProp = (name, value) => {
-      try{
-        if (value == null || value === ""){
-          if (typeof item.deleteProperty === "function"){
-            item.deleteProperty(name);
-          }else{
-            item.setProperty(name, "");
-          }
-        }else{
-          item.setProperty(name, String(value));
-        }
-      }catch(_){}
-    };
-    if ("token" in meta) setProp(TALK_PROP_TOKEN, meta.token);
-    if ("url" in meta) setProp(TALK_PROP_URL, meta.url);
-    if ("lobbyEnabled" in meta) setProp(TALK_PROP_LOBBY, boolToProp(meta.lobbyEnabled));
-    if ("startTimestamp" in meta && meta.startTimestamp != null){
-      const ts = Number(meta.startTimestamp);
-      if (Number.isFinite(ts)){
-        setProp(TALK_PROP_START, String(Math.floor(ts)));
-      }
-    }
-    if ("eventConversation" in meta){
-      setProp(TALK_PROP_EVENT, meta.eventConversation ? "event" : "standard");
-    }
-    if ("objectId" in meta) setProp(TALK_PROP_OBJECT_ID, meta.objectId);
-    if ("delegateId" in meta) setProp(TALK_PROP_DELEGATE, meta.delegateId);
-    if ("delegateName" in meta) setProp(TALK_PROP_DELEGATE_NAME, meta.delegateName);
-    if ("delegated" in meta) setProp(TALK_PROP_DELEGATED, boolToProp(!!meta.delegated));
-    if ("delegateReady" in meta){
-      const ready = meta.delegateReady;
-      if (ready == null){
-        setProp(TALK_PROP_DELEGATE_READY, "");
-      }else{
-        setProp(TALK_PROP_DELEGATE_READY, boolToProp(!!ready));
-      }
-    }
-    return { ok:true };
-  }
-
   function getTalkMetadataFromWindow(win){
-    const metadata = readTalkMetadata(win.document);
+    const metadata = CalUtils.readTalkMetadataFromDocument(win.document);
     return { ok:true, metadata };
   }
 
   function setTalkMetadataOnWindow(win, payload = {}){
-    return writeTalkMetadata(win.document, payload);
+    return CalUtils.setTalkMetadataOnWindow(win, payload);
   }
 
   function getEventSnapshotFromWindow(win){
-    const metadata = readTalkMetadata(win.document);
-    const docs = collectEventDocs(win.document);
-    const titleField = findField(docs, [
-      "#item-title",
-      'input[id^="event-grid-title"]',
-      'input[type="text"]'
-    ]);
-    const locationField = findField(docs, [
-      'input[aria-label="Ort"]',
-      'input[placeholder="Ort"]',
-      'input#item-location',
-      'input[name="location"]',
-      'textbox[id*="location"]'
-    ]);
-    const descField = findDescriptionFieldInDocs(docs);
-    const event = {
-      title: getFieldValue(titleField) || metadata.title || "",
-      location: getFieldValue(locationField) || "",
-      description: getFieldValue(descField) || "",
-      startTimestamp: metadata.startTimestamp || null,
-      endTimestamp: metadata.endTimestamp || null
-    };
-    return { ok:true, event, metadata };
+    return CalUtils.getEventSnapshotFromWindow(win);
   }
 
   function applyEventFieldsOnWindow(win, payload = {}){
-    const docs = collectEventDocs(win.document);
-    const titleField = findField(docs, [
-      "#item-title",
-      'input[id^="event-grid-title"]',
-      'input[type="text"]'
-    ]);
-    const locationField = findField(docs, [
-      'input[aria-label="Ort"]',
-      'input[placeholder="Ort"]',
-      'input#item-location',
-      'input[name="location"]',
-      'textbox[id*="location"]'
-    ]);
-    const descField = findDescriptionFieldInDocs(docs);
-    if (typeof payload.title === "string" && titleField){
-      setFieldValue(titleField, payload.title);
-    }
-    if (typeof payload.location === "string" && locationField){
-      setFieldValue(locationField, payload.location);
-    }
-    if (typeof payload.description === "string" && descField){
-      setFieldValue(descField, payload.description);
-    }
-    return { ok:true };
+    return CalUtils.applyEventFieldsOnWindow(win, payload);
   }
 
   function extractStartTimestamp(doc){
     try{
-      const docs = collectEventDocs(doc);
+      const docs = CalUtils.collectEventDocs(doc);
       for (const d of docs){
         const picker = d.querySelector && (d.querySelector("datetimepicker#event-starttime") || d.querySelector("datetimepicker#item-starttime"));
         if (picker){
@@ -351,7 +99,7 @@
       }
     }catch(_){}
     try{
-      const item = getCalendarItem(doc);
+      const item = CalUtils.getCalendarItemFromDocument(doc);
       const start = item?.startDate || item?.untilDate || item?.endDate;
       if (start){
         const jsDate = start.jsDate || start.getInTimezone?.(start.timezone || start.timezoneProvider?.tzid || "UTC")?.jsDate;
@@ -451,7 +199,7 @@
 
     const markPersisted = () => {
       try{
-        const meta = readTalkMetadata(win.document);
+        const meta = CalUtils.readTalkMetadataFromDocument(win.document);
         const startTs = extractStartTimestamp(win.document);
         log("room cleanup metadata snapshot", {
           token: meta?.token || "",
@@ -461,8 +209,16 @@
           delegateReady: meta?.delegateReady ?? null,
           startTimestamp: startTs ?? null
         });
+        const pendingDelegate = (meta?.delegateId || "").trim();
+        if (meta?.token && pendingDelegate && meta.delegated !== true){
+          CalUtils.writeTalkMetadataToDocument(win.document, { delegateReady: true });
+          log("delegate armed for calendar flow", {
+            token: meta.token,
+            delegate: pendingDelegate
+          });
+        }
         if (meta?.token && typeof startTs === "number"){
-          writeTalkMetadata(win.document, { startTimestamp: startTs });
+          CalUtils.writeTalkMetadataToDocument(win.document, { startTimestamp: startTs });
           (async () => {
             try{
               await requestUtility(context, {
@@ -483,14 +239,6 @@
                 startTimestamp: startTs
               });
             }catch(_){}
-            const pendingDelegate = (meta.delegateId || "").trim();
-            if (pendingDelegate && meta.delegated !== true){
-              writeTalkMetadata(win.document, { delegateReady: true });
-              log("delegate armed for calendar flow", {
-                token: meta.token,
-                delegate: pendingDelegate
-              });
-            }
           })();
         }
       }catch(_){}
@@ -518,7 +266,7 @@
 
   function ensureTrackedFromMetadata(context, doc, innerDoc){
     try{
-      const meta = readTalkMetadata(innerDoc || doc);
+      const meta = CalUtils.readTalkMetadataFromDocument(innerDoc || doc);
       if (!meta?.token) return;
       requestUtility(context, {
         type: "trackRoom",

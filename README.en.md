@@ -1,4 +1,3 @@
-[Deutsch](README.md) | [English](README.en.md)
 # Nextcloud Enterprise for Thunderbird
 
 Nextcloud Enterprise for Thunderbird connects Thunderbird directly with Nextcloud Talk and secure Nextcloud sharing. One click opens a modern wizard, creates Talk rooms with lobby and moderator delegation, and inserts the meeting link (including password) into the event. From the compose window, you can generate a Nextcloud share with upload folder, expiration date, password, and personal message. No copy-paste juggling and no open links in emails: everything stays in Thunderbird and is stored cleanly in your Nextcloud.
@@ -16,7 +15,7 @@ Nextcloud Enterprise for Thunderbird connects Thunderbird directly with Nextclou
 - **ESR-ready**
   Optimized and tested for Thunderbird ESR 140.X with a minimal experiment footprint.
 
-## Whats new in 2.2.0?
+## Whats new in 2.2.1?
 
 - New branding: Nextcloud Enterprise for Thunderbird.
 - Filelink wizard.
@@ -44,7 +43,7 @@ Nextcloud Enterprise for Thunderbird connects Thunderbird directly with Nextclou
 - App password or Login Flow V2
 
 ## Installation
-1. Install the current XPI `nextcloud-enterprise-2.2.0.xpi` in Thunderbird (Add-ons > Gear > Install Add-on From File).
+1. Install the current XPI `nextcloud-enterprise-2.2.1.xpi` in Thunderbird (Add-ons > Gear > Install Add-on From File).
 2. Restart Thunderbird.
 3. In the add-on options, enter base URL, user, and app password or start the login flow.
 

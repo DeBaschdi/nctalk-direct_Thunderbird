@@ -5,9 +5,8 @@
  */
 'use strict';
 /**
- * Hintergrundskript fuer Nextcloud Talk Direkt.
- * Verantwortlich fuer API-Aufrufe (Talk + CardDAV), Caching und
- * Utilities, die der Frontend-Teil per Messaging abruft.
+ * Background script for Nextcloud Talk Direct.
+ * Handles API calls (Talk + CardDAV), caching, and messaging utilities.
  */
 const ROOM_META_KEY = "nctalkRoomMeta";
 let DEBUG_ENABLED = false;
@@ -60,7 +59,7 @@ function shortId(value, max = 12){
 
 
 /**
- * Liefert einen lokalisierten Error über das Lokalisierungssystem.
+ * Create a localized Error using the i18n catalog.
  */
 function localizedError(key, substitutions = []){
   const message = bgI18n(key, substitutions);
@@ -196,8 +195,7 @@ async function decodeAvatarPixels({ base64, mime } = {}){
 }
 
 /**
- * Zentraler Background-Listener f�r experimentelle Schnittstellen und Optionen.
- * Bedient Create-/Lobby-/Utility-Requests, die aus dem Experiment kommen.
+ * Open the Talk dialog popup for a calendar window.
  */
 async function openTalkDialogWindow(windowId){
   const url = new URL(browser.runtime.getURL("ui/talkDialog.html"));

@@ -2,7 +2,7 @@
     "manifest_version":  2,
     "default_locale":  "de",
     "name":  "__MSG_extName__",
-    "version":  "2.2.0",
+    "version":  "2.2.1",
     "description":  "__MSG_extDescription__",
     "developer":  {
                      "name":  "Bastian Kleinschmidt"
@@ -25,9 +25,11 @@
                     ],
     "background":  {
                        "scripts":  [
+                                       "modules/ocs.js",
                                        "modules/i18n.js",
                                        "modules/nccore.js",
                                        "modules/talkcore.js",
+                                       "ui/textUtils.js",
                                        "modules/ncfilelink.js",
                                        "modules/background.js"
                                    ]
