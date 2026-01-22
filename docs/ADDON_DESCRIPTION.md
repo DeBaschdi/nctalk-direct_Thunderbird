@@ -1,16 +1,16 @@
 # Add-on Description
 
 ## Overview
-This add-on integrates Nextcloud Talk and file sharing into Thunderbird.
-- Filelink sharing from the compose window with upload and share metadata
+This add-on integrates Nextcloud Talk and Nextcloud Sharing into Thunderbird.
+- Sharing from the compose window with upload and share metadata
 - Talk room creation with lobby and moderator delegation
 - Calendar event integration via metadata and dialog injection
 - Central options for credentials and defaults
 - Debug logging across UI/background/experiment layers
 
 ## Architecture
-- modules/*: core logic for OCS requests, auth, Talk, Filelink, i18n, and background orchestration
-- ui/*: HTML/JS dialogs and helpers (options, filelink wizard, talk dialog, popup sizing, DOM i18n)
+- modules/*: core logic for OCS requests, auth, Talk, Sharing, i18n, and background orchestration
+- ui/*: HTML/JS dialogs and helpers (options, sharing wizard, talk dialog, popup sizing, DOM i18n)
 - experiments/*: calendar experiment for window hooking and dialog injection (parent.js, calToolbarShared.js, calToolbarDialog.js)
 Data flow:
 1. Options saved in storage (base URL, auth mode, defaults)
@@ -22,7 +22,7 @@ The calendar integration uses an experiment because the event dialog lives in pr
 The experiment registers window listeners and injects scripts to read and write event fields.
 
 ## Features
-### Filelink
+### Sharing
 - Creates a dated share folder via DAV and uploads selected files
 - Creates a share via /ocs/v2.php/apps/files_sharing/api/v1/shares
 - Applies defaults for share name, permissions, password, and expiry date
@@ -40,11 +40,11 @@ The experiment registers window listeners and injects scripts to read and write 
 - Injects a Talk button into the event dialog and iframe variants
 - Stores metadata in X-NCTALK-* properties (TOKEN, URL, LOBBY, START, EVENT, OBJECTID, DELEGATE, DELEGATE-NAME, DELEGATED)
 - Reads current title/location/description and applies updates back to the dialog
-- Persists lobby updates on calendar modifications and handles cleanup on deletion
+- Persists lobby updates on calendar modifications (drag-and-drop or dialog edits) and handles cleanup on deletion
 
 ### Logging and Debug
 - Enable debug mode in options to log detailed traces
-- Logs appear with channels [NCBG], [NCUI], [NCFL], [NCExp], [NCDBG]
+- Logs appear with channels [NCBG], [NCUI], [NCSHARE], [NCExp], [NCDBG]
 - Background logs include OCS/DAV status and metadata decisions
 
 ## Compatibility and Requirements
@@ -52,12 +52,12 @@ The experiment registers window listeners and injects scripts to read and write 
 - Nextcloud with OCS endpoints enabled and Talk installed
 - File sharing via DAV and OCS (remote.php and files_sharing API)
 - App password or Login Flow v2 for authentication
-- Permissions: storage (options, metadata), tabs/compose (UI integration), OCS/remote.php/index.php URL access for API and login flow
+- Permissions: storage (options, metadata), compose (UI integration), optional host access per configured Nextcloud origin for API and login flow
 
 ## Configuration
 - Base URL, user, and app password (manual) or Login Flow v2 (auto)
 - Debug mode for verbose logging
-- Filelink base path and default share name/permissions/password/expiry
+- Sharing base path and default share name/permissions/password/expiry
 - Talk defaults: title, lobby, listable, room type (event vs normal)
 Security notes:
 - Credentials are stored in browser.storage.local and used to build Basic auth headers
@@ -68,6 +68,6 @@ Security notes:
 - Build/Packaging: no build scripts in this repo; package as a Thunderbird add-on bundle when needed
 - Smoke-test checklist:
   - Options: "Test connection" with valid credentials
-  - Filelink wizard: create share, upload, insert HTML
+  - Sharing wizard: create share, upload, insert HTML
   - Talk dialog: create room and apply fields
   - Calendar event dialog: set metadata, save, reopen, verify X-NCTALK-* values

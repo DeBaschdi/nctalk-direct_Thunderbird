@@ -17,7 +17,7 @@ body{font:14px system-ui, sans-serif; max-width:760px; margin:20px auto; line-he
 .tab-panel{display:none; padding:20px;}
 .tab-panel.active{display:block;}
 .row{display:grid; grid-template-columns: 200px 1fr; gap:10px; align-items:center; margin:10px 0;}
-input[type="url"], input[type="text"], input[type="password"]{padding:8px; border:1px solid #ccc; border-radius:6px; width:100%;}
+input[type="url"], input[type="text"], input[type="password"], select{padding:8px; border:1px solid #ccc; border-radius:6px; width:100%;}
 footer{display:flex; gap:8px; margin-top:16px}
 #status{opacity:.8; font-size:12px}
 .donation{display:flex; flex-direction:column; gap:8px; margin-top:12px;}
@@ -34,6 +34,7 @@ footer{display:flex; gap:8px; margin-top:16px}
 #testConnection,#loginFlowButton{padding:8px 12px;}
 .checklist{display:flex; flex-direction:column; gap:6px;}
 .checklist label{font-weight:400;}
+.hint{margin:6px 0 0 0; font-size:12px; color:#555;}
 </style>
 <h1 data-i18n="options_heading">Nextcloud Talk - Einstellungen</h1>
 <div class="hero">
@@ -42,7 +43,7 @@ footer{display:flex; gap:8px; margin-top:16px}
 <div class="tabs">
   <div class="tab-list" role="tablist">
     <button type="button" class="tab-btn active" data-tab="general" data-i18n="options_tab_general">Allgemein</button>
-    <button type="button" class="tab-btn" data-tab="filelink" data-i18n="options_tab_filelink">Filelink</button>
+    <button type="button" class="tab-btn" data-tab="sharing" data-i18n="options_tab_sharing">Sharing</button>
     <button type="button" class="tab-btn" data-tab="talklink" data-i18n="options_tab_talklink">Talk Link</button>
     <button type="button" class="tab-btn" data-tab="advanced" data-i18n="options_tab_advanced">Erweitert</button>
     <button type="button" class="tab-btn" data-tab="debug" data-i18n="options_tab_debug">Debug</button>
@@ -68,35 +69,35 @@ footer{display:flex; gap:8px; margin-top:16px}
     <div class="row"><label for="user" data-i18n="options_user_label">Benutzername</label><input id="user" type="text"></div>
     <div class="row"><label for="appPass" data-i18n="options_app_pass_label">App-Passwort</label><input id="appPass" type="password"></div>
   </section>
-  <section id="tab-filelink" class="tab-panel">
+  <section id="tab-sharing" class="tab-panel">
     <div class="row">
-      <label for="fileLinkBase" data-i18n="options_filelink_base_label">Basisverzeichnis</label>
+      <label for="sharingBase" data-i18n="options_sharing_base_label">Basisverzeichnis</label>
       <div>
-        <input id="fileLinkBase" type="text">
-        <p style="margin:6px 0 0 0;font-size:12px;color:#555;" data-i18n="options_filelink_base_hint">Dateien werden unterhalb dieses Verzeichnisses abgelegt (z.B. "90 Freigaben - extern").</p>
+        <input id="sharingBase" type="text">
+        <p style="margin:6px 0 0 0;font-size:12px;color:#555;" data-i18n="options_sharing_base_hint">Dateien werden unterhalb dieses Verzeichnisses abgelegt (z.B. "90 Freigaben - extern").</p>
       </div>
     </div>
     <fieldset class="auth-block">
-      <legend data-i18n="options_filelink_defaults_heading">Default-Einstellungen</legend>
+      <legend data-i18n="options_sharing_defaults_heading">Default-Einstellungen</legend>
       <div class="row">
-        <label for="filelinkDefaultShareName" data-i18n="options_filelink_default_share_name_label">Freigabename (Default)</label>
-        <input id="filelinkDefaultShareName" type="text">
+        <label for="sharingDefaultShareName" data-i18n="options_sharing_default_share_name_label">Freigabename (Default)</label>
+        <input id="sharingDefaultShareName" type="text">
       </div>
       <div class="row">
-        <label data-i18n="options_filelink_default_permissions_label">Standard-Berechtigungen</label>
+        <label data-i18n="options_sharing_default_permissions_label">Standard-Berechtigungen</label>
         <div class="checklist">
-          <label><input id="filelinkDefaultPermCreate" type="checkbox"> <span data-i18n="options_filelink_default_perm_create">Hochladen/Erstellen</span></label>
-          <label><input id="filelinkDefaultPermWrite" type="checkbox"> <span data-i18n="options_filelink_default_perm_write">Bearbeiten</span></label>
-          <label><input id="filelinkDefaultPermDelete" type="checkbox"> <span data-i18n="options_filelink_default_perm_delete">Löschen</span></label>
+          <label><input id="sharingDefaultPermCreate" type="checkbox"> <span data-i18n="options_sharing_default_perm_create">Hochladen/Erstellen</span></label>
+          <label><input id="sharingDefaultPermWrite" type="checkbox"> <span data-i18n="options_sharing_default_perm_write">Bearbeiten</span></label>
+          <label><input id="sharingDefaultPermDelete" type="checkbox"> <span data-i18n="options_sharing_default_perm_delete">Löschen</span></label>
         </div>
       </div>
       <div class="row">
-        <label for="filelinkDefaultPassword" data-i18n="options_filelink_default_password_label">Passwort setzen (Default)</label>
-        <input id="filelinkDefaultPassword" type="checkbox">
+        <label for="sharingDefaultPassword" data-i18n="options_sharing_default_password_label">Passwort setzen (Default)</label>
+        <input id="sharingDefaultPassword" type="checkbox">
       </div>
       <div class="row">
-        <label for="filelinkDefaultExpireDays" data-i18n="options_filelink_default_expire_days_label">Ablaufdatum (Tage)</label>
-        <input id="filelinkDefaultExpireDays" type="number" min="1" step="1">
+        <label for="sharingDefaultExpireDays" data-i18n="options_sharing_default_expire_days_label">Ablaufdatum (Tage)</label>
+        <input id="sharingDefaultExpireDays" type="number" min="1" step="1">
       </div>
     </fieldset>
   </section>
@@ -125,7 +126,33 @@ footer{display:flex; gap:8px; margin-top:16px}
     </fieldset>
   </section>
   <section id="tab-advanced" class="tab-panel">
-    <p data-i18n="options_placeholder_advanced">Einstellungen folgen.</p>
+    <fieldset class="auth-block">
+      <legend data-i18n="options_advanced_language_heading">Spracheinstellungen</legend>
+      <div class="row">
+        <label for="shareBlockLang" data-i18n="options_share_block_lang_label">Sprache im Freigabe-Block</label>
+        <div>
+          <select id="shareBlockLang">
+            <option value="default" data-i18n="options_lang_default">Standard (UI)</option>
+            <option value="en" data-i18n="options_lang_en">English</option>
+            <option value="de" data-i18n="options_lang_de">Deutsch</option>
+            <option value="fr" data-i18n="options_lang_fr">Français</option>
+          </select>
+          <p class="hint" data-i18n="options_share_block_lang_hint">Steuert die Sprache des eingefügten Freigabe-HTML-Blocks.</p>
+        </div>
+      </div>
+      <div class="row">
+        <label for="eventDescriptionLang" data-i18n="options_event_description_lang_label">Sprache im Talk-Beschreibungstext</label>
+        <div>
+          <select id="eventDescriptionLang">
+            <option value="default" data-i18n="options_lang_default">Standard (UI)</option>
+            <option value="en" data-i18n="options_lang_en">English</option>
+            <option value="de" data-i18n="options_lang_de">Deutsch</option>
+            <option value="fr" data-i18n="options_lang_fr">Français</option>
+          </select>
+          <p class="hint" data-i18n="options_event_description_lang_hint">Steuert die Sprache des Talk-Textblocks in Terminen.</p>
+        </div>
+      </div>
+    </fieldset>
   </section>
   <section id="tab-debug" class="tab-panel">
     <div class="row">
@@ -156,8 +183,10 @@ footer{display:flex; gap:8px; margin-top:16px}
   <span id="status"></span>
 </footer>
 <script src="modules/i18n.js"></script>
+<script src="modules/sharingStorage.js"></script>
+<script src="modules/hostPermissions.js"></script>
 <script src="modules/ocs.js"></script>
 <script src="ui/textUtils.js"></script>
-<script src="modules/ncfilelink.js"></script>
+<script src="modules/ncSharing.js"></script>
 <script src="ui/domI18n.js"></script>
 <script src="options.js"></script>

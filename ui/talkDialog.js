@@ -60,6 +60,10 @@
     return fallback || "";
   };
 
+  NCTalkDomI18n.translatePage((key, subs) => browser.i18n.getMessage(key, subs), {
+    titleKey: "talk_dialog_title"
+  });
+
   const state = {
     windowId: Number.isFinite(windowId) ? windowId : null,
     metadata: null,
@@ -77,7 +81,7 @@
   };
 
   if (passwordInput){
-    passwordInput.setAttribute("placeholder", t("ui_create_password_placeholder", "Optional"));
+    passwordInput.setAttribute("placeholder", t("ui_create_password_placeholder"));
   }
 
   logDebug("popup init", {
@@ -86,7 +90,7 @@
   });
   bindEvents();
   if (!state.windowId){
-    setMessage("Fenster-ID fehlt.", true);
+    setMessage(t("talk_error_window_id_missing"), true);
   }else{
     init();
   }
@@ -118,7 +122,7 @@
         windowId: state.windowId
       });
       if (!check?.ok){
-        throw new Error(check?.error || "init failed");
+        throw new Error(check?.error || t("talk_error_init_failed"));
       }
       await loadSnapshot();
     }catch(error){
@@ -128,7 +132,7 @@
 
   async function loadTalkDefaults(){
     const defaults = {
-      title: t("ui_default_title", "Besprechung"),
+      title: t("ui_default_title"),
       lobby: true,
       listable: true,
       roomType: "event"
@@ -171,14 +175,14 @@
         windowId: state.windowId
       });
       if (!response?.ok){
-        throw new Error(response?.error || "snapshot failed");
+        throw new Error(response?.error || t("talk_error_snapshot_failed"));
       }
       state.metadata = response.metadata || {};
       state.event = response.event || {};
       const defaults = await loadTalkDefaults();
       const eventTitle = (state.event.title || "").trim();
       const metaTitle = (state.metadata.title || "").trim();
-      const fallbackTitle = defaults.title || t("ui_default_title", "Besprechung");
+      const fallbackTitle = defaults.title || t("ui_default_title");
       titleInput.value = eventTitle || metaTitle || fallbackTitle;
       const lobbyValue = state.metadata.lobbyEnabled;
       const listableValue = state.metadata.listable;
@@ -207,13 +211,13 @@
       return;
     }
     if (!titleInput.value.trim()){
-      setMessage(t("ui_create_title_label", "Titel") + "?", true);
+      setMessage(t("talk_error_title_missing"), true);
       return;
     }
     state.busy = true;
     okBtn.disabled = true;
     cancelBtn.disabled = true;
-    setMessage(t("ui_button_create_progress", "Erstelle..."), false);
+    setMessage(t("ui_button_create_progress"), false);
     try{
       const payload = buildCreatePayload();
       const response = await browser.runtime.sendMessage({
@@ -221,7 +225,7 @@
         payload
       });
       if (!response?.ok){
-        throw new Error(response?.error || "create failed");
+        throw new Error(response?.error || t("talk_error_create_failed"));
       }
       logDebug("createRoom success", {
         includeEvent: payload.eventConversation,
@@ -277,7 +281,7 @@
 
   async function applyCreateResult(payload, result){
     if (!result?.token || !result?.url){
-      throw new Error(t("ui_create_failed", "Fehler beim Erstellen."));
+      throw new Error(t("ui_create_failed", [t("talk_error_create_missing_data")]));
     }
     const delegationInfo = await handleDelegationAfterCreate(result, payload);
     const metadata = {
@@ -299,12 +303,12 @@
       windowId: state.windowId,
       metadata
     });
-    const description = composeDescription(state.event?.description || "", result.url, payload.password);
+    const description = await composeDescription(state.event?.description || "", result.url, payload.password);
     if (typeof state.windowId !== "number"){
       logDebug("missing windowId for talk:applyEventFields", {
         windowId: state.windowId
       });
-      throw new Error(t("ui_error_window_reference") || "Fensterreferenz fehlt.");
+      throw new Error(t("talk_error_window_reference"));
     }
     logDebug("send talk:applyEventFields", {
       windowId: state.windowId,
@@ -375,11 +379,11 @@
       return true;
     }
     await showInlineModal({
-      title: t("ui_password_error_title", "Passwort prüfen"),
-      message: t("ui_password_error_text", "Bitte mindestens 5 Zeichen eingeben."),
+      title: t("ui_password_error_title"),
+      message: t("ui_password_error_text"),
       variant: "error",
       buttons: [
-        { label: t("ui_button_ok", "OK"), role: "confirm", primary: true }
+        { label: t("ui_button_ok"), role: "confirm", primary: true }
       ]
     });
     try{
@@ -423,7 +427,7 @@
     return (hash >>> 0).toString(16).padStart(8, "0");
   }
 
-  function composeDescription(baseText, url, password){
+  async function composeDescription(baseText, url, password){
     const parts = [];
     const clean = (baseText || "").trim();
     if (clean){
@@ -433,7 +437,9 @@
       ? window.NCTalkCore.buildStandardTalkDescription
       : null;
     if (buildStandard){
-      parts.push(buildStandard(url, password));
+      try{
+        parts.push(await buildStandard(url, password));
+      }catch(_){}
     }
     return parts.join("\n\n").trim();
   }
@@ -528,8 +534,8 @@
     const seq = ++state.delegate.searchSeq;
     const trimmed = (term || "").trim();
     updateDelegateStatus(trimmed
-      ? t("ui_delegate_status_searching", "Suche läuft...")
-      : t("ui_delegate_status_loading", "Lade Kontakte..."));
+      ? t("ui_delegate_status_searching")
+      : t("ui_delegate_status_loading"));
     try{
       const response = await browser.runtime.sendMessage({
         type: "talk:searchUsers",
@@ -573,14 +579,14 @@
       state.delegate.activeIndex = normalized.length ? 0 : -1;
       if (!normalized.length){
         updateDelegateStatus(trimmed
-          ? t("ui_delegate_status_none_with_email", "Keine Treffer mit E-Mail.")
-          : t("ui_delegate_status_none_found", "Keine Kontakte gefunden."));
+          ? t("ui_delegate_status_none_with_email")
+          : t("ui_delegate_status_none_found"));
         hideDelegateDropdown(true);
         return;
       }
       const summary = normalized.length === 1
-        ? t("ui_delegate_status_single", "1 Treffer")
-        : (t("ui_delegate_status_many", [normalized.length]) || `${normalized.length} Treffer`);
+        ? t("ui_delegate_status_single")
+        : t("ui_delegate_status_many", [normalized.length]);
       updateDelegateStatus(summary);
       renderDelegateDropdown();
     }catch(error){
@@ -588,7 +594,7 @@
         return;
       }
       console.error("[NCUI][Talk] delegate search failed", error);
-      updateDelegateStatus(error?.message || t("ui_delegate_status_error", "Suche fehlgeschlagen."), true);
+      updateDelegateStatus(error?.message || t("ui_delegate_status_error"), true);
       state.delegate.suggestions = [];
       hideDelegateDropdown(true);
     }
@@ -762,7 +768,7 @@
   }
 
   function getDelegateAlertLabel(payload){
-    const fallback = t("ui_delegate_selected_title", "Ausgewählt");
+    const fallback = t("ui_delegate_selected_title");
     const candidates = [
       state.delegate.alertLabel,
       payload?.delegateName,
@@ -803,8 +809,7 @@
     const metaLine = selection.email && selection.email !== selection.displayLabel ? selection.email : "";
     delegateSelectedMeta.textContent = metaLine;
     if (delegateSelectedDescription){
-      delegateSelectedDescription.textContent = t("ui_delegate_selected_description") ||
-        "Bei Angabe wird die Moderation nach Erstellung an diesen Benutzer übertragen und Sie verlassen den Raum.";
+      delegateSelectedDescription.textContent = t("ui_delegate_selected_description");
     }
     if (selection.avatarDataUrl){
       delegateAvatarImg.src = selection.avatarDataUrl;
@@ -847,14 +852,14 @@
     if (!message){
       return Promise.resolve();
     }
-    const title = t("ui_delegate_modal_title", "Moderatorenübergabe");
+    const title = t("ui_delegate_modal_title");
     return showInlineModal({
       title,
       message,
       variant,
       buttons: [
-        { label: t("ui_button_cancel", "Abbrechen"), role: "cancel", className: "secondary" },
-        { label: t("ui_button_ok", "OK"), role: "confirm", primary: true }
+        { label: t("ui_button_cancel"), role: "cancel", className: "secondary" },
+        { label: t("ui_button_ok"), role: "confirm", primary: true }
       ]
     });
   }
@@ -862,7 +867,7 @@
   function showInlineModal({ title, message, variant = "info", buttons }){
     const finalButtons = Array.isArray(buttons) && buttons.length
       ? buttons
-      : [{ label: t("ui_button_ok", "OK"), role: "confirm", primary: true }];
+      : [{ label: t("ui_button_ok"), role: "confirm", primary: true }];
     return new Promise((resolve) => {
       try{
         const overlay = document.createElement("div");

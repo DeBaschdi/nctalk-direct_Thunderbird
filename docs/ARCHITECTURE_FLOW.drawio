@@ -22,16 +22,16 @@
         <mxCell id="A_lane_nextcloud" value="Nextcloud" style="swimlane;html=1;horizontal=0;startSize=30;fillColor=#f8f8f8;strokeColor=#c0c0c0;" vertex="1" parent="1">
           <mxGeometry x="1220" y="20" width="240" height="900" as="geometry"/>
         </mxCell>
-        <mxCell id="A_step1" value="1. User action (Options / Filelink / Talk)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="A_lane_user">
+        <mxCell id="A_step1" value="1. User action (Options / Sharing / Talk)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="A_lane_user">
           <mxGeometry x="20" y="60" width="200" height="60" as="geometry"/>
         </mxCell>
-        <mxCell id="A_step2" value="2. UI scripts handle input (options.js, ui/filelinkWizard.js, ui/talkDialog.js)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="A_lane_ui">
+        <mxCell id="A_step2" value="2. UI scripts handle input (options.js, ui/nextcloudSharingWizard.js, ui/talkDialog.js)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="A_lane_ui">
           <mxGeometry x="20" y="60" width="200" height="80" as="geometry"/>
         </mxCell>
         <mxCell id="A_step3" value="3. background.js dispatches runtime messages" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="A_lane_modules">
           <mxGeometry x="20" y="60" width="200" height="60" as="geometry"/>
         </mxCell>
-        <mxCell id="A_step4" value="4. modules/* build requests (nccore.js, ncfilelink.js, talkcore.js, ocs.js)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="A_lane_modules">
+        <mxCell id="A_step4" value="4. modules/* build requests (nccore.js, ncSharing.js, talkcore.js, ocs.js)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="A_lane_modules">
           <mxGeometry x="20" y="160" width="200" height="80" as="geometry"/>
         </mxCell>
         <mxCell id="A_step5" value="5. Nextcloud OCS/WebDAV responses (JSON)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="A_lane_nextcloud">
@@ -192,7 +192,7 @@
       </root>
     </mxGraphModel>
   </diagram>
-  <diagram id="filelink-flow" name="Filelink Flow">
+  <diagram id="Sharing-flow" name="Sharing Flow">
     <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
       <root>
         <mxCell id="0"/>
@@ -219,19 +219,19 @@
         <mxCell id="C_step1" value="1. Click ComposeAction (Add Nextcloud Share)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="C_lane_user">
           <mxGeometry x="20" y="60" width="200" height="60" as="geometry"/>
         </mxCell>
-        <mxCell id="C_step2" value="2. background.js opens ui/filelinkWizard.html" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="C_lane_modules">
+        <mxCell id="C_step2" value="2. background.js opens ui/nextcloudSharingWizard.html" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="C_lane_modules">
           <mxGeometry x="20" y="60" width="200" height="60" as="geometry"/>
         </mxCell>
-        <mxCell id="C_step3" value="3. filelinkWizard.js collects files/settings" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="C_lane_ui">
+        <mxCell id="C_step3" value="3. nextcloudSharingWizard.js collects files/settings" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="C_lane_ui">
           <mxGeometry x="20" y="60" width="200" height="60" as="geometry"/>
         </mxCell>
-        <mxCell id="C_step4" value="4. ncfilelink.js createFileLink (DAV + OCS)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="C_lane_modules">
+        <mxCell id="C_step4" value="4. ncSharing.js create share (DAV + OCS)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="C_lane_modules">
           <mxGeometry x="20" y="160" width="200" height="70" as="geometry"/>
         </mxCell>
         <mxCell id="C_step5" value="5. WebDAV + OCS responses" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="C_lane_nextcloud">
           <mxGeometry x="20" y="60" width="200" height="60" as="geometry"/>
         </mxCell>
-        <mxCell id="C_step6" value="6. Build HTML + send filelink:insertHtml" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="C_lane_ui">
+        <mxCell id="C_step6" value="6. Build HTML + send sharing:insertHtml" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="C_lane_ui">
           <mxGeometry x="20" y="160" width="200" height="70" as="geometry"/>
         </mxCell>
         <mxCell id="C_step7" value="7. compose.setComposeDetails inserts HTML" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="C_lane_thunderbird">
@@ -484,3 +484,5 @@
     </mxGraphModel>
   </diagram>
 </mxfile>
+
+

@@ -22,6 +22,17 @@ const NCCore = (() => {
     return String(input).trim().replace(/\/+$/, "");
   }
 
+  async function ensureHostPermission(baseUrl){
+    if (typeof NCHostPermissions === "undefined" || !NCHostPermissions?.hasOriginPermission){
+      return true;
+    }
+    const ok = await NCHostPermissions.hasOriginPermission(baseUrl);
+    if (!ok){
+      throw new Error(bgI18n("error_host_permission_missing"));
+    }
+    return true;
+  }
+
   /**
    * Validate base URL, username, and app password via OCS.
    * Calls /cloud/capabilities first and then /cloud/user.
@@ -35,6 +46,7 @@ const NCCore = (() => {
     if (!normalizedBase || !trimmedUser || !password){
       return { ok:false, code:"missing", message: bgI18n("error_credentials_missing") };
     }
+    await ensureHostPermission(normalizedBase);
     const basicHeader = "Basic " + btoa(trimmedUser + ":" + password);
     try{
       L("options test connection", { base: normalizedBase, user: shortId(trimmedUser) });
@@ -112,6 +124,7 @@ const NCCore = (() => {
     if (!normalized){
       throw new Error(bgI18n("error_credentials_missing"));
     }
+    await ensureHostPermission(normalized);
     const url = normalized + "/index.php/login/v2";
     const headers = {
       "OCS-APIRequest": "true",
@@ -153,6 +166,7 @@ const NCCore = (() => {
     if (!pollEndpoint || !pollToken){
       throw new Error("Login-Flow Daten fehlen.");
     }
+    await ensureHostPermission(pollEndpoint);
     const headers = {
       "OCS-APIRequest": "true",
       "Accept": "application/json",

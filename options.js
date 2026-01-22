@@ -1,13 +1,16 @@
-﻿/**
+/**
  * Copyright (c) 2025 Bastian Kleinschmidt
  * Licensed under the GNU Affero General Public License v3.0.
  * See LICENSE.txt for details.
  */
 'use strict';
 const i18n = NCI18n.translate;
-const DEFAULT_FILELINK_EXPIRE_DAYS = 7;
-const DEFAULT_FILELINK_SHARE_NAME = i18n("filelink_share_default") || "Freigabename";
+const DEFAULT_SHARING_EXPIRE_DAYS = 7;
+const DEFAULT_SHARING_SHARE_NAME = i18n("sharing_share_default") || "Freigabename";
 const DEFAULT_TALK_TITLE = i18n("ui_default_title") || "Besprechung";
+const FALLBACK_POPUP_WIDTH = 520;
+const FALLBACK_POPUP_HEIGHT = 320;
+const SHARING_KEYS = NCSharingStorage.SHARING_KEYS;
 
 NCTalkDomI18n.translatePage(i18n, { titleKey: "options_title" });
 initTabs();
@@ -17,19 +20,22 @@ const statusEl = document.getElementById("status");
 const baseUrlInput = document.getElementById("baseUrl");
 const userInput = document.getElementById("user");
 const appPassInput = document.getElementById("appPass");
-const fileLinkBaseInput = document.getElementById("fileLinkBase");
-const filelinkDefaultShareNameInput = document.getElementById("filelinkDefaultShareName");
-const filelinkDefaultPermCreateInput = document.getElementById("filelinkDefaultPermCreate");
-const filelinkDefaultPermWriteInput = document.getElementById("filelinkDefaultPermWrite");
-const filelinkDefaultPermDeleteInput = document.getElementById("filelinkDefaultPermDelete");
-const filelinkDefaultPasswordInput = document.getElementById("filelinkDefaultPassword");
-const filelinkDefaultExpireDaysInput = document.getElementById("filelinkDefaultExpireDays");
+const sharingBaseInput = document.getElementById("sharingBase");
+const sharingDefaultShareNameInput = document.getElementById("sharingDefaultShareName");
+const sharingDefaultPermCreateInput = document.getElementById("sharingDefaultPermCreate");
+const sharingDefaultPermWriteInput = document.getElementById("sharingDefaultPermWrite");
+const sharingDefaultPermDeleteInput = document.getElementById("sharingDefaultPermDelete");
+const sharingDefaultPasswordInput = document.getElementById("sharingDefaultPassword");
+const sharingDefaultExpireDaysInput = document.getElementById("sharingDefaultExpireDays");
 const talkDefaultTitleInput = document.getElementById("talkDefaultTitle");
 const talkDefaultLobbyInput = document.getElementById("talkDefaultLobby");
 const talkDefaultListableInput = document.getElementById("talkDefaultListable");
 const talkDefaultRoomTypeRadios = Array.from(document.querySelectorAll("input[name='talkDefaultRoomType']"));
-const DEFAULT_FILELINK_BASE = (typeof NCFileLink !== "undefined" ? NCFileLink.DEFAULT_BASE_PATH : "90 Freigaben - extern");
+const shareBlockLangSelect = document.getElementById("shareBlockLang");
+const eventDescriptionLangSelect = document.getElementById("eventDescriptionLang");
+const DEFAULT_SHARING_BASE = (typeof NCSharing !== "undefined" ? NCSharing.DEFAULT_BASE_PATH : "90 Freigaben - extern");
 let statusTimer = null;
+const LANG_OPTIONS = new Set(["default", "en", "de", "fr"]);
 
 function showStatus(message, isError = false, sticky = false, isSuccess = false){
   if (statusTimer){
@@ -47,50 +53,66 @@ function showStatus(message, isError = false, sticky = false, isSuccess = false)
 }
 
 async function load(){
+  if (NCSharingStorage?.migrateLegacySharingKeys){
+    await NCSharingStorage.migrateLegacySharingKeys();
+  }
   const stored = await browser.storage.local.get([
     "baseUrl",
     "user",
     "appPass",
     "debugEnabled",
     "authMode",
-    "fileLinkBasePath",
-    "filelinkDefaultShareName",
-    "filelinkDefaultPermCreate",
-    "filelinkDefaultPermWrite",
-    "filelinkDefaultPermDelete",
-    "filelinkDefaultPassword",
-    "filelinkDefaultExpireDays",
+    SHARING_KEYS.basePath,
+    SHARING_KEYS.defaultShareName,
+    SHARING_KEYS.defaultPermCreate,
+    SHARING_KEYS.defaultPermWrite,
+    SHARING_KEYS.defaultPermDelete,
+    SHARING_KEYS.defaultPassword,
+    SHARING_KEYS.defaultExpireDays,
     "talkDefaultTitle",
     "talkDefaultLobby",
     "talkDefaultListable",
-    "talkDefaultRoomType"
+    "talkDefaultRoomType",
+    "shareBlockLang",
+    "eventDescriptionLang"
   ]);
   if (stored.baseUrl) baseUrlInput.value = stored.baseUrl;
   if (stored.user) userInput.value = stored.user;
   if (stored.appPass) appPassInput.value = stored.appPass;
   document.getElementById("debugEnabled").checked = !!stored.debugEnabled;
-  if (fileLinkBaseInput){
-    fileLinkBaseInput.value = stored.fileLinkBasePath || DEFAULT_FILELINK_BASE;
+  if (sharingBaseInput){
+    sharingBaseInput.value = stored[SHARING_KEYS.basePath] || DEFAULT_SHARING_BASE;
   }
-  if (filelinkDefaultShareNameInput){
-    filelinkDefaultShareNameInput.value = stored.filelinkDefaultShareName || DEFAULT_FILELINK_SHARE_NAME;
+  if (sharingDefaultShareNameInput){
+    sharingDefaultShareNameInput.value = stored[SHARING_KEYS.defaultShareName] || DEFAULT_SHARING_SHARE_NAME;
   }
-  if (filelinkDefaultPermCreateInput){
-    filelinkDefaultPermCreateInput.checked = !!stored.filelinkDefaultPermCreate;
+  if (sharingDefaultPermCreateInput){
+    sharingDefaultPermCreateInput.checked = typeof stored[SHARING_KEYS.defaultPermCreate] === "boolean"
+      ? stored[SHARING_KEYS.defaultPermCreate]
+      : false;
   }
-  if (filelinkDefaultPermWriteInput){
-    filelinkDefaultPermWriteInput.checked = !!stored.filelinkDefaultPermWrite;
+  if (sharingDefaultPermWriteInput){
+    sharingDefaultPermWriteInput.checked = typeof stored[SHARING_KEYS.defaultPermWrite] === "boolean"
+      ? stored[SHARING_KEYS.defaultPermWrite]
+      : false;
   }
-  if (filelinkDefaultPermDeleteInput){
-    filelinkDefaultPermDeleteInput.checked = !!stored.filelinkDefaultPermDelete;
+  if (sharingDefaultPermDeleteInput){
+    sharingDefaultPermDeleteInput.checked = typeof stored[SHARING_KEYS.defaultPermDelete] === "boolean"
+      ? stored[SHARING_KEYS.defaultPermDelete]
+      : false;
   }
-  if (filelinkDefaultPasswordInput){
-    filelinkDefaultPasswordInput.checked = stored.filelinkDefaultPassword !== undefined
-      ? !!stored.filelinkDefaultPassword
+  if (sharingDefaultPasswordInput){
+    const storedPassword = stored[SHARING_KEYS.defaultPassword];
+    sharingDefaultPasswordInput.checked = storedPassword !== undefined
+      ? !!storedPassword
       : true;
   }
-  if (filelinkDefaultExpireDaysInput){
-  filelinkDefaultExpireDaysInput.value = String(NCTalkTextUtils.normalizeExpireDays(stored.filelinkDefaultExpireDays, DEFAULT_FILELINK_EXPIRE_DAYS));
+  if (sharingDefaultExpireDaysInput){
+    const normalizedExpireDays = NCTalkTextUtils.normalizeExpireDays(
+      stored[SHARING_KEYS.defaultExpireDays],
+      DEFAULT_SHARING_EXPIRE_DAYS
+    );
+    sharingDefaultExpireDaysInput.value = String(normalizedExpireDays);
   }
   if (talkDefaultTitleInput){
     talkDefaultTitleInput.value = stored.talkDefaultTitle || DEFAULT_TALK_TITLE;
@@ -105,9 +127,60 @@ async function load(){
       ? !!stored.talkDefaultListable
       : true;
   }
+  if (shareBlockLangSelect){
+    shareBlockLangSelect.value = normalizeLangChoice(stored.shareBlockLang);
+  }
+  if (eventDescriptionLangSelect){
+    eventDescriptionLangSelect.value = normalizeLangChoice(stored.eventDescriptionLang);
+  }
   setTalkDefaultRoomType(stored.talkDefaultRoomType);
   setAuthMode(stored.authMode || "manual");
   updateAuthModeUI();
+}
+
+async function ensureOriginPermissionInteractive({ allowPrompt = true } = {}){
+  const baseUrl = baseUrlInput?.value?.trim() || "";
+  if (!baseUrl){
+    return true;
+  }
+  if (typeof NCHostPermissions === "undefined" || !NCHostPermissions?.ensureOriginPermissionInteractive){
+    return true;
+  }
+  const ok = await NCHostPermissions.ensureOriginPermissionInteractive(baseUrl, { prompt: allowPrompt });
+  if (!ok && allowPrompt){
+    showStatus(i18n("options_permission_required"), true, true);
+  }
+  return ok;
+}
+
+async function openLoginUrl(url){
+  if (!url){
+    return false;
+  }
+  if (browser?.windows?.openDefaultBrowser){
+    try{
+      await browser.windows.openDefaultBrowser(url);
+      return true;
+    }catch(_){}
+  }
+  try{
+    const fallbackUrl = new URL(browser.runtime.getURL("ui/openUrlFallback.html"));
+    fallbackUrl.searchParams.set("url", url);
+    if (browser?.windows?.create){
+      await browser.windows.create({
+        url: fallbackUrl.toString(),
+        type: "popup",
+        width: FALLBACK_POPUP_WIDTH,
+        height: FALLBACK_POPUP_HEIGHT
+      });
+      return true;
+    }
+    if (typeof window !== "undefined" && typeof window.open === "function"){
+      window.open(fallbackUrl.toString(), "_blank", "popup");
+      return true;
+    }
+  }catch(_){}
+  return false;
 }
 
 async function save(){
@@ -116,37 +189,45 @@ async function save(){
   const appPass = appPassInput.value;
   const debugEnabled = document.getElementById("debugEnabled").checked;
   const authMode = getSelectedAuthMode();
-  const fileLinkBasePath = (fileLinkBaseInput?.value?.trim()) || DEFAULT_FILELINK_BASE;
-  const filelinkDefaultShareName = (filelinkDefaultShareNameInput?.value || "").trim() || DEFAULT_FILELINK_SHARE_NAME;
-  const filelinkDefaultPermCreate = !!filelinkDefaultPermCreateInput?.checked;
-  const filelinkDefaultPermWrite = !!filelinkDefaultPermWriteInput?.checked;
-  const filelinkDefaultPermDelete = !!filelinkDefaultPermDeleteInput?.checked;
-  const filelinkDefaultPassword = filelinkDefaultPasswordInput
-    ? !!filelinkDefaultPasswordInput.checked
+  const sharingBasePath = (sharingBaseInput?.value?.trim()) || DEFAULT_SHARING_BASE;
+  const sharingDefaultShareName = (sharingDefaultShareNameInput?.value || "").trim() || DEFAULT_SHARING_SHARE_NAME;
+  const sharingDefaultPermCreate = !!sharingDefaultPermCreateInput?.checked;
+  const sharingDefaultPermWrite = !!sharingDefaultPermWriteInput?.checked;
+  const sharingDefaultPermDelete = !!sharingDefaultPermDeleteInput?.checked;
+  const sharingDefaultPassword = sharingDefaultPasswordInput
+    ? !!sharingDefaultPasswordInput.checked
     : true;
-  const filelinkDefaultExpireDays = NCTalkTextUtils.normalizeExpireDays(filelinkDefaultExpireDaysInput?.value, DEFAULT_FILELINK_EXPIRE_DAYS);
+  const sharingDefaultExpireDays = NCTalkTextUtils.normalizeExpireDays(sharingDefaultExpireDaysInput?.value, DEFAULT_SHARING_EXPIRE_DAYS);
   const talkDefaultTitle = (talkDefaultTitleInput?.value || "").trim() || DEFAULT_TALK_TITLE;
   const talkDefaultLobby = talkDefaultLobbyInput ? !!talkDefaultLobbyInput.checked : true;
   const talkDefaultListable = talkDefaultListableInput ? !!talkDefaultListableInput.checked : true;
   const talkDefaultRoomType = getSelectedTalkDefaultRoomType();
+  const shareBlockLang = normalizeLangChoice(shareBlockLangSelect?.value);
+  const eventDescriptionLang = normalizeLangChoice(eventDescriptionLangSelect?.value);
+  const permissionOk = await ensureOriginPermissionInteractive();
   await browser.storage.local.set({
     baseUrl,
     user,
     appPass,
     debugEnabled,
     authMode,
-    fileLinkBasePath,
-    filelinkDefaultShareName,
-    filelinkDefaultPermCreate,
-    filelinkDefaultPermWrite,
-    filelinkDefaultPermDelete,
-    filelinkDefaultPassword,
-    filelinkDefaultExpireDays,
+    [SHARING_KEYS.basePath]: sharingBasePath,
+    [SHARING_KEYS.defaultShareName]: sharingDefaultShareName,
+    [SHARING_KEYS.defaultPermCreate]: sharingDefaultPermCreate,
+    [SHARING_KEYS.defaultPermWrite]: sharingDefaultPermWrite,
+    [SHARING_KEYS.defaultPermDelete]: sharingDefaultPermDelete,
+    [SHARING_KEYS.defaultPassword]: sharingDefaultPassword,
+    [SHARING_KEYS.defaultExpireDays]: sharingDefaultExpireDays,
     talkDefaultTitle,
     talkDefaultLobby,
     talkDefaultListable,
-    talkDefaultRoomType
+    talkDefaultRoomType,
+    shareBlockLang,
+    eventDescriptionLang
   });
+  if (!permissionOk){
+    return;
+  }
   showStatus(i18n("options_status_saved"));
 }
 
@@ -260,24 +341,43 @@ function setTalkDefaultRoomType(value){
   });
 }
 
-if (loginFlowButton){
-  loginFlowButton.addEventListener("click", async () => {
+function normalizeLangChoice(value){
+  const normalized = String(value || "default").toLowerCase();
+  return LANG_OPTIONS.has(normalized) ? normalized : "default";
+}
+
+  if (loginFlowButton){
+    loginFlowButton.addEventListener("click", async () => {
     if (loginFlowButton.disabled || loginFlowInProgress) return;
     const baseUrl = baseUrlInput.value.trim();
     if (!baseUrl){
       showStatus(i18n("options_loginflow_missing"), true);
       return;
     }
+    if (!(await ensureOriginPermissionInteractive())){
+      return;
+    }
     loginFlowInProgress = true;
     updateAuthModeUI();
     try{
-      const promise = browser.runtime.sendMessage({
-        type: "options:loginFlow",
+      showStatus(i18n("options_loginflow_starting"), false, true);
+      const startResponse = await browser.runtime.sendMessage({
+        type: "options:loginFlowStart",
         payload: { baseUrl }
       });
-      showStatus(i18n("options_loginflow_starting"), false, true);
+      if (!startResponse?.ok){
+        showStatus(startResponse?.error || i18n("options_loginflow_failed"), true);
+        return;
+      }
+      await openLoginUrl(startResponse.loginUrl);
       showStatus(i18n("options_loginflow_browser"), false, true);
-      const response = await promise;
+      const response = await browser.runtime.sendMessage({
+        type: "options:loginFlowComplete",
+        payload: {
+          pollEndpoint: startResponse.pollEndpoint,
+          pollToken: startResponse.pollToken
+        }
+      });
       if (response?.ok){
         if (response.user) userInput.value = response.user;
         if (response.appPass) appPassInput.value = response.appPass;
@@ -306,6 +406,9 @@ async function runConnectionTest({ showMissing = true } = {}){
     }
     return { ok:false, skipped:true, reason:"missing" };
   }
+  if (!(await ensureOriginPermissionInteractive({ allowPrompt: showMissing }))){
+    return { ok:false, skipped:true, reason:"permission" };
+  }
   try{
     const response = await browser.runtime.sendMessage({
       type: "options:testConnection",
@@ -327,6 +430,7 @@ async function runConnectionTest({ showMissing = true } = {}){
     return { ok:false, error: err?.message || String(err) };
   }
 }
+
 
 
 

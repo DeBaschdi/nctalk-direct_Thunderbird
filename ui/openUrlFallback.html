@@ -1,0 +1,83 @@
+<!--
+Copyright (c) 2025 Bastian Kleinschmidt
+Licensed under the GNU Affero General Public License v3.0.
+See LICENSE.txt for details.
+-->
+<!doctype html>
+<meta charset="utf-8">
+<title data-i18n="open_url_title">Open Link</title>
+<style>
+:root{
+  --accent:#1d73db;
+  --surface:#f8f9fb;
+  --text:#1f1f1f;
+}
+body{
+  margin:0;
+  font:14px system-ui, sans-serif;
+  background:var(--surface);
+  color:var(--text);
+  padding:18px;
+}
+.card{
+  background:#fff;
+  border:1px solid #d7dbe5;
+  border-radius:12px;
+  padding:16px;
+  box-shadow:0 12px 28px rgba(20,30,50,0.12);
+}
+h1{
+  font-size:16px;
+  margin:0 0 8px 0;
+}
+p{
+  margin:0 0 12px 0;
+  color:#4a4a4a;
+}
+input{
+  width:100%;
+  padding:8px 10px;
+  border:1px solid #c7c7c7;
+  border-radius:8px;
+  background:#f5f6fa;
+  font-family:ui-monospace, Consolas, monospace;
+}
+.actions{
+  display:flex;
+  gap:10px;
+  margin-top:12px;
+  flex-wrap:wrap;
+}
+button{
+  padding:8px 14px;
+  border-radius:8px;
+  border:1px solid #c7c7c7;
+  background:#fff;
+  cursor:pointer;
+}
+button.primary{
+  background:var(--accent);
+  color:#fff;
+  border-color:var(--accent);
+}
+#status{
+  margin-top:10px;
+  font-size:12px;
+  min-height:16px;
+}
+</style>
+<body>
+  <div class="card">
+    <h1 data-i18n="open_url_heading">Open link in your browser</h1>
+    <p data-i18n="open_url_instructions">Copy the URL below and paste it into your default browser.</p>
+    <input id="urlInput" type="text" readonly>
+    <div class="actions">
+      <button type="button" class="primary" id="copyBtn" data-i18n="open_url_copy">Copy URL</button>
+      <button type="button" id="closeBtn" data-i18n="open_url_close">Close</button>
+    </div>
+    <div id="status"></div>
+  </div>
+  <script src="../modules/i18n.js"></script>
+  <script src="domI18n.js"></script>
+  <script src="openUrlFallback.js"></script>
+</body>

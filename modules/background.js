@@ -13,11 +13,14 @@ let DEBUG_ENABLED = false;
 let ROOM_META = {};
 const TALK_POPUP_WIDTH = 540;
 const TALK_POPUP_HEIGHT = 860;
-const FILELINK_POPUP_WIDTH = 660;
-const FILELINK_POPUP_HEIGHT = 760;
+const SHARING_POPUP_WIDTH = 660;
+const SHARING_POPUP_HEIGHT = 760;
 
 (async () => {
   try{
+    if (NCSharingStorage?.migrateLegacySharingKeys){
+      await NCSharingStorage.migrateLegacySharingKeys();
+    }
     const stored = await browser.storage.local.get(["debugEnabled", ROOM_META_KEY]);
     DEBUG_ENABLED = !!stored.debugEnabled;
     ROOM_META = stored[ROOM_META_KEY] || {};
@@ -66,27 +69,14 @@ function localizedError(key, substitutions = []){
   return new Error(message || key);
 }
 
-async function openLoginUrl(url){
-  if (!url) return;
-  if (browser?.windows?.openDefaultBrowser){
-    try{
-      await browser.windows.openDefaultBrowser(url);
-      return;
-    }catch(_){}
-  }
-  try{
-    await browser.tabs.create({ url, active: true });
-  }catch(_){}
-}
-
 browser.composeAction.onClicked.addListener(async (tab) => {
   try{
-    const popupUrl = browser.runtime.getURL(`ui/filelinkWizard.html?tabId=${tab.id}`);
+    const popupUrl = browser.runtime.getURL(`ui/nextcloudSharingWizard.html?tabId=${tab.id}`);
     await browser.windows.create({
       url: popupUrl,
       type: "popup",
-      width: FILELINK_POPUP_WIDTH,
-      height: FILELINK_POPUP_HEIGHT
+      width: SHARING_POPUP_WIDTH,
+      height: SHARING_POPUP_HEIGHT
     });
   }catch(e){
     console.error("[NCBG] composeAction.onClicked", e);
@@ -468,24 +458,37 @@ browser.runtime.onMessage.addListener(async (msg) => {
       return { ok:false, error: e?.message || String(e) };
     }
   }
-  if (msg.type === "options:loginFlow"){
+  if (msg.type === "options:loginFlowStart"){
     try{
       const baseUrl = NCCore.normalizeBaseUrl(msg.payload?.baseUrl || "");
       if (!baseUrl){
         return { ok:false, error: bgI18n("options_loginflow_missing") };
       }
       const start = await NCCore.startLoginFlow(baseUrl);
-      await openLoginUrl(start.loginUrl);
-      const creds = await NCCore.completeLoginFlow({
+      return {
+        ok:true,
+        loginUrl: start.loginUrl,
         pollEndpoint: start.pollEndpoint,
         pollToken: start.pollToken
-      });
+      };
+    }catch(e){
+      return { ok:false, error: e?.message || bgI18n("options_loginflow_failed") };
+    }
+  }
+  if (msg.type === "options:loginFlowComplete"){
+    try{
+      const pollEndpoint = msg.payload?.pollEndpoint || "";
+      const pollToken = msg.payload?.pollToken || "";
+      if (!pollEndpoint || !pollToken){
+        return { ok:false, error: bgI18n("options_loginflow_failed") };
+      }
+      const creds = await NCCore.completeLoginFlow({ pollEndpoint, pollToken });
       return { ok:true, user: creds.loginName, appPass: creds.appPassword };
     }catch(e){
       return { ok:false, error: e?.message || bgI18n("options_loginflow_failed") };
     }
   }
-  if (msg.type === "filelink:insertHtml"){
+  if (msg.type === "sharing:insertHtml"){
     try{
       const tabId = msg.payload?.tabId;
       const html = msg.payload?.html || "";

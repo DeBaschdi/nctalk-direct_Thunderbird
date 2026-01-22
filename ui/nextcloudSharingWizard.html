@@ -1,0 +1,364 @@
+<!--
+Copyright (c) 2025 Bastian Kleinschmidt
+Licensed under the GNU Affero General Public License v3.0.
+See LICENSE.txt for details.
+-->
+<!doctype html>
+<meta charset="utf-8">
+<title data-i18n="sharing_dialog_title">Nextcloud Freigabe</title>
+<style>
+html,
+body{
+  height:100%;
+}
+body{
+  margin:0;
+  padding:0;
+  background:linear-gradient(180deg,#fafdff 0%,#eef2fb 100%);
+  font:14px 'Segoe UI',system-ui,sans-serif;
+  color:#1f1f1f;
+  min-height:0;
+  box-sizing:border-box;
+  display:flex;
+  justify-content:center;
+}
+.nc-dialog{
+  width:100%;
+  max-width:640px;
+  height:100%;
+  max-height:640px;
+  margin:0 auto;
+  background:#fff;
+  border-radius:16px;
+  border:1px solid rgba(4,16,41,0.08);
+  box-shadow:0 24px 48px rgba(11,17,39,0.2);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  min-height:0;
+}
+.nc-dialog-hero{
+  background:#0078d4;
+  padding:14px 14px 12px;
+  text-align:center;
+}
+.nc-dialog-hero img{
+  height:40px;
+}
+.dialog-message{
+  min-height:0;
+  padding:0 32px;
+  font-size:13px;
+  display:flex;
+  align-items:center;
+}
+.dialog-message.error{color:#b00020;}
+.dialog-message.success{color:#11883a;}
+.nc-dialog-content{
+  padding:18px 28px 22px;
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+  background:#f7f8ff;
+  overflow:hidden;
+}
+.wizard-step{
+  display:none;
+}
+.wizard-step.active{
+  display:block;
+}
+.wizard-step.active[data-step="3"]{
+  display:flex;
+  flex-direction:column;
+  flex:1;
+  min-height:0;
+}
+.wizard-step h2{
+  margin:0 0 18px 0;
+  font-size:20px;
+}
+.form-row{
+  margin-bottom:18px;
+  display:flex;
+  flex-direction:column;
+}
+.form-row label{
+  font-weight:600;
+  margin-bottom:6px;
+}
+input[type="text"],
+input[type="date"],
+input[type="password"],
+textarea{
+  border:1px solid #c7c7c7;
+  border-radius:6px;
+  padding:8px 10px;
+  font-size:14px;
+  font-family:inherit;
+  width:100%;
+  box-sizing:border-box;
+}
+textarea{
+  min-height:140px;
+}
+.checkbox-row{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin:10px 0;
+}
+.inline-field{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  margin-bottom:10px;
+}
+.inline-field.hidden,
+#expireFields.hidden,
+#noteFields.hidden,
+#passwordFields.hidden{
+  display:none;
+}
+.inline-field button{
+  padding:6px 12px;
+  border:1px solid #c7c7c7;
+  border-radius:4px;
+  background:#f5f5f5;
+  cursor:pointer;
+}
+.inline-field button:hover{
+  background:#e6e6e6;
+}
+.base-path{
+  font-size:13px;
+  color:#555;
+  margin-bottom:12px;
+}
+.file-actions{
+  display:flex;
+  gap:10px;
+  margin-bottom:10px;
+}
+.file-actions button{
+  padding:8px 14px;
+  border:1px solid #c7c7c7;
+  border-radius:4px;
+  background:#f5f5f5;
+  cursor:pointer;
+}
+.file-actions button:disabled{
+  opacity:0.5;
+  cursor:not-allowed;
+}
+.wizard-step[data-step="3"] .file-actions{
+  flex-wrap:wrap;
+}
+.wizard-step[data-step="3"] .file-table-wrapper{
+  flex:1;
+  min-height:0;
+}
+.file-table-wrapper{
+  border:1px solid #dcdcdc;
+  border-radius:8px;
+  overflow:auto;
+}
+table{
+  width:100%;
+  border-collapse:collapse;
+}
+thead{
+  background:#f4f4f4;
+  font-weight:600;
+}
+th,td{
+  padding:10px;
+  border-bottom:1px solid #e4e4e4;
+  font-size:13px;
+}
+tbody tr.selected{
+  background:#e3f2fd;
+}
+.empty-placeholder{
+  padding:24px;
+  text-align:center;
+  font-size:13px;
+  color:#777;
+}
+.status-progress{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.status-progress .percent{
+  width:38px;
+  font-weight:600;
+  text-align:right;
+}
+.status-progress .bar{
+  flex:1;
+  height:6px;
+  background:#cfe5ff;
+  border-radius:4px;
+  overflow:hidden;
+}
+.status-progress .bar span{
+  display:block;
+  height:100%;
+  width:0;
+  background:#0078d4;
+}
+.status-text{
+  font-size:12px;
+  color:#555;
+  margin-top:8px;
+}
+.nc-dialog-footer{
+  border-top:1px solid #e0e0e0;
+  padding:16px 28px 22px;
+  background:#fff;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+.nc-dialog-footer button{
+  padding:8px 18px;
+  border-radius:4px;
+  border:1px solid #c7c7c7;
+  background:#f3f3f3;
+  cursor:pointer;
+  font-size:14px;
+}
+.nc-dialog-footer button.primary{
+  background:#0078d4;
+  border-color:#0078d4;
+  color:#fff;
+}
+.nc-dialog-footer button:disabled{
+  opacity:0.5;
+  cursor:not-allowed;
+}
+.footer-left,
+.footer-right{
+  display:flex;
+  gap:10px;
+}
+</style>
+<body>
+  <div class="nc-dialog">
+    <div class="nc-dialog-hero">
+      <img src="../logo-nextcloud-png-transparent.png" alt="Nextcloud">
+    </div>
+    <div class="dialog-message" id="messageBar"></div>
+    <div class="nc-dialog-content">
+      <section class="wizard-step active" data-step="1">
+        <h2 data-i18n="sharing_heading_permissions">Freigabeeinstellungen</h2>
+        <div class="form-row">
+          <label for="shareName" data-i18n="sharing_share_name_label">Freigabename</label>
+          <input id="shareName" type="text" data-i18n-placeholder="sharing_share_placeholder" placeholder="Freigabe">
+        </div>
+        <label class="checkbox-row">
+          <input type="checkbox" id="permRead" checked disabled>
+          <span data-i18n="sharing_permission_read">Lesen</span>
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" id="permCreate">
+          <span data-i18n="sharing_permission_create">Erstellen</span>
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" id="permWrite">
+          <span data-i18n="sharing_permission_write">Bearbeiten</span>
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" id="permDelete">
+          <span data-i18n="sharing_permission_delete">Löschen</span>
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" id="passwordToggle" checked>
+          <span data-i18n="sharing_password_toggle">Freigabe-Passwort setzen</span>
+        </label>
+        <div class="inline-field" id="passwordFields">
+          <input id="passwordInput" type="text" autocomplete="new-password" placeholder="********">
+          <button type="button" id="passwordGenerate" data-i18n="sharing_password_generate">Generieren</button>
+        </div>
+      </section>
+
+      <section class="wizard-step" data-step="2">
+        <h2 data-i18n="sharing_step_expire">Ablaufdatum</h2>
+        <label class="checkbox-row">
+          <input type="checkbox" id="expireToggle" checked>
+          <span data-i18n="sharing_expire_toggle">Ablaufdatum setzen</span>
+        </label>
+        <div class="inline-field" id="expireFields">
+          <input type="date" id="expireDate">
+        </div>
+        <div class="status-text" data-i18n="sharing_expire_hint">Nach Ablauf ist der Link nicht mehr abrufbar.</div>
+      </section>
+
+      <section class="wizard-step" data-step="3">
+        <h2 data-i18n="sharing_step_files_title">Dateien oder Ordner auswählen</h2>
+        <div class="base-path">
+          <span data-i18n="sharing_base_path_info">Basisverzeichnis:</span>
+          <strong id="basePathLabel"></strong>
+        </div>
+        <div class="file-actions">
+          <button type="button" id="addFilesBtn" data-i18n="sharing_button_add_files">Dateien hinzufügen...</button>
+          <button type="button" id="addFolderBtn" data-i18n="sharing_button_add_folder">Ordner hinzufügen...</button>
+          <button type="button" id="removeFileBtn" data-i18n="sharing_button_remove">Entfernen</button>
+        </div>
+        <div class="file-table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th data-i18n="sharing_files_table_path">Pfad</th>
+                <th data-i18n="sharing_files_table_type">Typ</th>
+                <th data-i18n="sharing_files_table_status">Status</th>
+              </tr>
+            </thead>
+            <tbody id="fileTableBody"></tbody>
+          </table>
+          <div class="empty-placeholder" id="fileEmptyPlaceholder" data-i18n="sharing_files_empty">Keine Dateien ausgewählt.</div>
+        </div>
+        <div class="status-text" id="uploadStatus"></div>
+      </section>
+
+      <section class="wizard-step" data-step="4">
+        <h2 data-i18n="sharing_step_note_heading">Notiz an Empfänger</h2>
+        <label class="checkbox-row">
+          <input type="checkbox" id="noteToggle">
+          <span data-i18n="sharing_note_toggle">Notiz für Empfänger hinzufügen</span>
+        </label>
+        <div class="form-row hidden" id="noteFields">
+          <textarea id="noteInput" data-i18n-placeholder="sharing_note_placeholder" placeholder=""></textarea>
+        </div>
+      </section>
+    </div>
+    <div class="nc-dialog-footer">
+      <div class="footer-left">
+        <button type="button" id="backBtn" data-i18n="sharing_button_back">Zurück</button>
+        <button type="button" id="uploadBtn" data-i18n="sharing_button_upload">Upload</button>
+      </div>
+      <div class="footer-right">
+        <button type="button" id="nextBtn" data-i18n="sharing_button_next">Weiter</button>
+        <button type="button" class="primary" id="finishBtn" data-i18n="sharing_button_finish">Fertigstellen</button>
+        <button type="button" id="cancelBtn" data-i18n="sharing_button_cancel">Abbrechen</button>
+      </div>
+    </div>
+  </div>
+  <input type="file" id="fileInput" multiple hidden>
+  <input type="file" id="folderInput" webkitdirectory hidden>
+  <script src="../modules/i18n.js"></script>
+  <script src="../modules/i18nOverride.js"></script>
+  <script src="../modules/sharingStorage.js"></script>
+  <script src="../modules/ocs.js"></script>
+  <script src="textUtils.js"></script>
+  <script src="../modules/nccore.js"></script>
+  <script src="../modules/talkcore.js"></script>
+  <script src="../modules/hostPermissions.js"></script>
+  <script src="../modules/ncSharing.js"></script>
+  <script src="popupSizing.js"></script>
+  <script src="domI18n.js"></script>
+  <script src="password.js"></script>
+  <script src="nextcloudSharingWizard.js"></script>
+</body>

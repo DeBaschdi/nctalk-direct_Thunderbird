@@ -11,6 +11,32 @@ async function getOpts(){
   return NCCore.getOpts();
 }
 
+function hostPermissionError(){
+  if (typeof localizedError === "function"){
+    return localizedError("error_host_permission_missing");
+  }
+  const fallback = typeof bgI18n === "function"
+    ? bgI18n("error_host_permission_missing")
+    : "Host permission missing.";
+  return new Error(fallback);
+}
+
+async function ensureHostPermission(baseUrl){
+  if (typeof NCHostPermissions === "undefined" || !NCHostPermissions?.hasOriginPermission){
+    return true;
+  }
+  const ok = await NCHostPermissions.hasOriginPermission(baseUrl);
+  if (!ok){
+    try{
+      L("host permission missing", { baseUrl });
+    }catch(_){
+      console.warn("[NCTalk] host permission missing", baseUrl || "");
+    }
+    throw hostPermissionError();
+  }
+  return true;
+}
+
 const EVENT_SUPPORT_CACHE = {
   value: null,
   reason: "",
@@ -227,6 +253,7 @@ async function getEventConversationSupport(){
     noteEventSupport(false, "Zugangsdaten fehlen");
     return { supported:false, reason:"Zugangsdaten fehlen" };
   }
+  await ensureHostPermission(baseUrl);
   const headers = {
     "OCS-APIRequest": "true",
     "Authorization": "Basic " + btoa(user + ":" + appPass),
@@ -537,6 +564,7 @@ function createScratchCanvas(width, height){
 async function getSystemAddressbookContacts(force = false){
   const { baseUrl, user, appPass } = await getOpts();
   if (!baseUrl || !user || !appPass) throw localizedError("error_credentials_missing");
+  await ensureHostPermission(baseUrl);
   const now = Date.now();
   if (!force &&
       SYSTEM_ADDRESSBOOK_CACHE.contacts.length &&
@@ -622,19 +650,35 @@ function sanitizeDescription(desc){
 /**
  * Combine a base description with optional Talk link and password.
  */
-function buildRoomDescription(baseDescription, url, password){
+async function buildRoomDescription(baseDescription, url, password){
   const parts = [];
   if (baseDescription && String(baseDescription).trim()){
     parts.push(String(baseDescription).trim());
   }
-  const talkBlock = buildStandardTalkDescription(url, password);
+  const talkBlock = await buildStandardTalkDescription(url, password);
   if (talkBlock){
     parts.push(talkBlock);
   }
   return parts.join("\n\n").trim();
 }
 
-function descriptionI18n(key, substitutions = []){
+async function getEventDescriptionLang(){
+  if (!browser?.storage?.local){
+    return "default";
+  }
+  try{
+    const stored = await browser.storage.local.get(["eventDescriptionLang"]);
+    return stored.eventDescriptionLang || "default";
+  }catch(_){
+    return "default";
+  }
+}
+
+async function descriptionI18n(lang, key, substitutions = []){
+  if (typeof NCI18nOverride !== "undefined" && typeof NCI18nOverride.tInLang === "function"){
+    const msg = await NCI18nOverride.tInLang(lang, key, substitutions);
+    if (msg) return msg;
+  }
   try{
     if (typeof bgI18n === "function"){
       const msg = bgI18n(key, substitutions);
@@ -653,12 +697,16 @@ function descriptionI18n(key, substitutions = []){
   return "";
 }
 
-function buildStandardTalkDescription(url, password){
-  const heading = descriptionI18n("ui_description_heading") || "Nextcloud Talk";
-  const joinLabel = descriptionI18n("ui_description_join_label") || "Jetzt an der Besprechung teilnehmen :";
-  const passwordLine = password ? (descriptionI18n("ui_description_password_line", [password]) || `Passwort: ${password}`) : "";
-  const helpLabel = descriptionI18n("ui_description_help_label") || "Benötigen Sie Hilfe?";
-  const helpUrl = descriptionI18n("ui_description_help_url") || "https://docs.nextcloud.com/server/latest/user_manual/de/talk/join_a_call_or_chat_as_guest.html";
+async function buildStandardTalkDescription(url, password){
+  const lang = await getEventDescriptionLang();
+  const heading = await descriptionI18n(lang, "ui_description_heading");
+  const joinLabel = await descriptionI18n(lang, "ui_description_join_label");
+  const passwordLine = password
+    ? await descriptionI18n(lang, "ui_description_password_line", [password])
+    : "";
+  const helpLabel = await descriptionI18n(lang, "ui_description_help_label");
+  const helpUrl = (await descriptionI18n(lang, "ui_description_help_url"))
+    || "https://docs.nextcloud.com/server/latest/user_manual/en/talk/join_a_call_or_chat_as_guest.html";
   const lines = [
     heading,
     "",
@@ -690,6 +738,7 @@ async function createTalkPublicRoom({
 } = {}){
   const { baseUrl, user, appPass } = await getOpts();
   if (!baseUrl || !user || !appPass) throw localizedError("error_credentials_missing");
+  await ensureHostPermission(baseUrl);
 
   const auth = "Basic " + btoa(user + ":" + appPass);
   const headers = { "OCS-APIRequest": "true", "Authorization": auth, "Accept":"application/json", "Content-Type":"application/json" };
@@ -831,7 +880,7 @@ async function createTalkPublicRoom({
         L("listable update error", e?.message || String(e));
       }
     }
-    const finalDescription = buildRoomDescription(description, url, password);
+    const finalDescription = await buildRoomDescription(description, url, password);
     const allowDescriptionUpdate = !(attempt.includeEvent && eventConversation);
     if (allowDescriptionUpdate && finalDescription && finalDescription !== cleanedDescription){
       try{
@@ -890,6 +939,7 @@ async function updateTalkLobby({ token, enableLobby, startTimestamp } = {}){
   if (!token) throw localizedError("error_room_token_missing");
   const { baseUrl, user, appPass } = await getOpts();
   if (!baseUrl || !user || !appPass) throw localizedError("error_credentials_missing");
+  await ensureHostPermission(baseUrl);
   const auth = "Basic " + btoa(user + ":" + appPass);
   const headers = { "OCS-APIRequest": "true", "Authorization": auth, "Accept":"application/json", "Content-Type":"application/json" };
   const base = baseUrl.replace(/\/$/,"");
@@ -923,6 +973,7 @@ async function deleteTalkRoom({ token } = {}){
   if (!token) throw localizedError("error_room_token_missing");
   const { baseUrl, user, appPass } = await getOpts();
   if (!baseUrl || !user || !appPass) throw localizedError("error_credentials_missing");
+  await ensureHostPermission(baseUrl);
   const auth = "Basic " + btoa(user + ":" + appPass);
   const headers = { "OCS-APIRequest": "true", "Authorization": auth, "Accept":"application/json" };
   const base = baseUrl.replace(/\/$/,"");
@@ -961,6 +1012,7 @@ async function getTalkRoomParticipants({ token } = {}){
   if (!token) throw localizedError("error_room_token_missing");
   const { baseUrl, user, appPass } = await getOpts();
   if (!baseUrl || !user || !appPass) throw localizedError("error_credentials_missing");
+  await ensureHostPermission(baseUrl);
   L("get room participants request", { token: shortToken(token) });
   const auth = "Basic " + btoa(user + ":" + appPass);
   const headers = { "OCS-APIRequest": "true", "Authorization": auth, "Accept":"application/json" };
@@ -990,6 +1042,7 @@ async function addTalkParticipant({ token, actorId, source = "users" } = {}){
   if (!token || !actorId) throw localizedError("error_token_or_actor_missing");
   const { baseUrl, user, appPass } = await getOpts();
   if (!baseUrl || !user || !appPass) throw localizedError("error_credentials_missing");
+  await ensureHostPermission(baseUrl);
   L("add participant request", {
     token: shortToken(token),
     actor: String(actorId).trim(),
@@ -1029,6 +1082,7 @@ async function promoteTalkModerator({ token, attendeeId } = {}){
   if (!token || typeof attendeeId !== "number") throw localizedError("error_moderator_id_missing");
   const { baseUrl, user, appPass } = await getOpts();
   if (!baseUrl || !user || !appPass) throw localizedError("error_credentials_missing");
+  await ensureHostPermission(baseUrl);
   L("promote moderator request", {
     token: shortToken(token),
     attendeeId
@@ -1066,6 +1120,7 @@ async function leaveTalkRoom({ token } = {}){
   if (!token) throw localizedError("error_room_token_missing");
   const { baseUrl, user, appPass } = await getOpts();
   if (!baseUrl || !user || !appPass) throw localizedError("error_credentials_missing");
+  await ensureHostPermission(baseUrl);
   L("leave room request", { token: shortToken(token) });
   const auth = "Basic " + btoa(user + ":" + appPass);
   const headers = {

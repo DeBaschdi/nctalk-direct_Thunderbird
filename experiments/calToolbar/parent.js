@@ -9,30 +9,22 @@
  */
 'use strict';
 
-const { classes: Cc, interfaces: Ci } = Components;
 var { ExtensionCommon } = ChromeUtils.importESModule("resource://gre/modules/ExtensionCommon.sys.mjs");
-var { ExtensionParent } = ChromeUtils.importESModule("resource://gre/modules/ExtensionParent.sys.mjs");
+var { ExtensionSupport } = ChromeUtils.importESModule("resource:///modules/ExtensionSupport.sys.mjs");
+let Services = null;
+try{
+  Services = ChromeUtils.importESModule("resource://gre/modules/Services.sys.mjs").Services;
+}catch(_){
+  Services = typeof globalThis !== "undefined" ? globalThis.Services : null;
+}
 let CAL_MODULE = null;
 try{
   CAL_MODULE = ChromeUtils.importESModule("resource:///modules/calendar/calUtils.sys.mjs");
 }catch(_){
-  try{
-    CAL_MODULE = ChromeUtils.import("resource://calendar/modules/calUtils.jsm");
-  }catch(__){
-    CAL_MODULE = null;
-  }
+  CAL_MODULE = null;
 }
 const CAL = CAL_MODULE?.cal || null;
-
-if (typeof Services === "undefined" || !Services || !Services.wm){
-  throw new Error("Services.wm ist im Experiment-Kontext nicht verfuegbar.");
-}
-
-const EXTENSION_ID = "nctalk-direct-esr140@example.com";
-const EXTENSION = ExtensionParent.GlobalManager.getExtension(EXTENSION_ID);
-if (!EXTENSION){
-  throw new Error("Extension " + EXTENSION_ID + " nicht gefunden.");
-}
+let EXTENSION = null;
 
 const BRIDGE_SCRIPT_PATH = "ui/calToolbarDialog.js";
 const CAL_SHARED_PATH = "ui/calToolbarShared.js";
@@ -41,6 +33,12 @@ let CalUtils = null;
 const EVENT_DIALOG_URLS = [
   "chrome://calendar/content/calendar-event-dialog.xhtml",
   "chrome://calendar/content/calendar-event-dialog.xul"
+];
+const WINDOW_LISTENER_ID = "ext-nextcloud-enterprise-thunderbird";
+const WINDOW_LISTENER_URLS = [
+  ...EVENT_DIALOG_URLS,
+  "chrome://messenger/content/messenger.xhtml",
+  "chrome://calendar/content/calendar.xhtml"
 ];
 
 const CREATE_HANDLERS = new WeakMap();
@@ -330,6 +328,14 @@ function watchStandaloneCalendarWindow(win){
   }
 }
 
+/**
+ * Track calendar UI windows/tabs so observers only run while calendar UI is open.
+ * The observer keeps Talk meetings in sync:
+ * - deleted event => remove Talk room on the server
+ * - moved event => update lobby/start times on the server
+ * Refcounted start/stop avoids leaks and only watches calendar windows.
+ * @param {Window} win
+ */
 function trackCalendarWindowPresence(win){
   if (isEventDialogWindow(win)){
     activateEventDialogWindow(win);
@@ -992,11 +998,8 @@ function createBridgeAPI(context, init = {}){
     },
     openDialog: async () => {
       const windowId = state.windowId || null;
-      if (!context?.extension?.browser?.runtime?.sendMessage){
-        throw new Error("runtime messaging unavailable");
-      }
-      return await context.extension.browser.runtime.sendMessage({
-        type: "talk:openDialog",
+      return dispatchHandlerSet(getHandlerSet(UTILITY_HANDLERS, context), {
+        type: "openDialog",
         windowId
       });
     }
@@ -1055,62 +1058,47 @@ function installBridge(win, context, init){
  * Register listeners for new and closing windows.
  */
 function registerWindowListener(context, init){
-  const listener = {
-    onOpenWindow(xulWindow){
-      const docShell = xulWindow?.docShell || null;
-      const win = docShell?.DOMWindow || docShell?.domWindow || null;
-      if (!win) return;
-      const inject = () => {
-        trackCalendarWindowPresence(win);
-        if (isEventDialogWindow(win)){
-          if (installBridge(win, context, init)){
-            console.log("[NCExp] bridge injected window");
-            activateEventDialogWindow(win);
-          }
+  const onLoadWindow = (win) => {
+    if (!win) return;
+    const inject = () => {
+      trackCalendarWindowPresence(win);
+      if (isEventDialogWindow(win)){
+        if (installBridge(win, context, init)){
+          console.log("[NCExp] bridge injected window");
+          activateEventDialogWindow(win);
         }
-      };
-      if (win.document?.readyState === "complete"){
-        inject();
-      }else{
-        const onLoad = () => {
-          win.removeEventListener("load", onLoad);
-          inject();
-        };
-        win.addEventListener("load", onLoad, { once: true });
       }
-    },
-    onCloseWindow(){},
-    onWindowTitleChange(){}
+    };
+    if (win.document?.readyState === "complete"){
+      inject();
+    }else{
+      const onLoad = () => {
+        win.removeEventListener("load", onLoad);
+        inject();
+      };
+      win.addEventListener("load", onLoad, { once: true });
+    }
   };
 
-  Services.wm.addListener(listener);
-  const enumerator = Services.wm.getEnumerator(null);
-  if (enumerator){
-    while (enumerator.hasMoreElements()){
-      const win = enumerator.getNext();
-      const domWindow = win?.docShell?.DOMWindow || win?.docShell?.domWindow || win;
-      if (!domWindow) continue;
-      trackCalendarWindowPresence(domWindow);
-      if (isEventDialogWindow(domWindow)){
-        if (installBridge(domWindow, context, init)){
-          console.log("[NCExp] bridge injected existing window");
-          activateEventDialogWindow(domWindow);
-        }
-      }
-    }
-  }
+  ExtensionSupport.registerWindowListener(WINDOW_LISTENER_ID, {
+    chromeURLs: WINDOW_LISTENER_URLS,
+    onLoadWindow
+  });
 
   let active = true;
   return () => {
     if (!active) return;
     active = false;
-    Services.wm.removeListener(listener);
+    try{
+      ExtensionSupport.unregisterWindowListener(WINDOW_LISTENER_ID);
+    }catch(_){}
     stopAllCalendarActivity();
   };
 }
 
 this.calToolbar = class extends ExtensionCommon.ExtensionAPI {
   getAPI(context) {
+    EXTENSION = context.extension;
     ACTIVE_CONTEXTS.add(context);
     context.callOnClose(() => {
       ACTIVE_CONTEXTS.delete(context);

@@ -1,0 +1,74 @@
+/**
+ * Copyright (c) 2025 Bastian Kleinschmidt
+ * Licensed under the GNU Affero General Public License v3.0.
+ * See LICENSE.txt for details.
+ */
+'use strict';
+
+const NCSharingStorage = (() => {
+  const SHARING_KEYS = {
+    basePath: "sharingBasePath",
+    defaultShareName: "sharingDefaultShareName",
+    defaultPermCreate: "sharingDefaultPermCreate",
+    defaultPermWrite: "sharingDefaultPermWrite",
+    defaultPermDelete: "sharingDefaultPermDelete",
+    defaultPassword: "sharingDefaultPassword",
+    defaultExpireDays: "sharingDefaultExpireDays"
+  };
+  const LEGACY_KEYS = {
+    basePath: "fileLinkBasePath",
+    defaultShareName: "filelinkDefaultShareName",
+    defaultPermCreate: "filelinkDefaultPermCreate",
+    defaultPermWrite: "filelinkDefaultPermWrite",
+    defaultPermDelete: "filelinkDefaultPermDelete",
+    defaultPassword: "filelinkDefaultPassword",
+    defaultExpireDays: "filelinkDefaultExpireDays"
+  };
+  const ALL_KEYS = Object.values(SHARING_KEYS).concat(Object.values(LEGACY_KEYS));
+
+  async function migrateLegacySharingKeys(){
+    if (typeof browser === "undefined" || !browser?.storage?.local){
+      return;
+    }
+    const stored = await browser.storage.local.get(ALL_KEYS);
+    const migration = {};
+    if (stored[SHARING_KEYS.basePath] == null && stored[LEGACY_KEYS.basePath]){
+      migration[SHARING_KEYS.basePath] = stored[LEGACY_KEYS.basePath];
+    }
+    if (stored[SHARING_KEYS.defaultShareName] == null && stored[LEGACY_KEYS.defaultShareName]){
+      migration[SHARING_KEYS.defaultShareName] = stored[LEGACY_KEYS.defaultShareName];
+    }
+    if (typeof stored[SHARING_KEYS.defaultPermCreate] !== "boolean"
+        && typeof stored[LEGACY_KEYS.defaultPermCreate] === "boolean"){
+      migration[SHARING_KEYS.defaultPermCreate] = stored[LEGACY_KEYS.defaultPermCreate];
+    }
+    if (typeof stored[SHARING_KEYS.defaultPermWrite] !== "boolean"
+        && typeof stored[LEGACY_KEYS.defaultPermWrite] === "boolean"){
+      migration[SHARING_KEYS.defaultPermWrite] = stored[LEGACY_KEYS.defaultPermWrite];
+    }
+    if (typeof stored[SHARING_KEYS.defaultPermDelete] !== "boolean"
+        && typeof stored[LEGACY_KEYS.defaultPermDelete] === "boolean"){
+      migration[SHARING_KEYS.defaultPermDelete] = stored[LEGACY_KEYS.defaultPermDelete];
+    }
+    if (stored[SHARING_KEYS.defaultPassword] === undefined
+        && stored[LEGACY_KEYS.defaultPassword] !== undefined){
+      migration[SHARING_KEYS.defaultPassword] = stored[LEGACY_KEYS.defaultPassword];
+    }
+    if (stored[SHARING_KEYS.defaultExpireDays] == null
+        && stored[LEGACY_KEYS.defaultExpireDays] !== undefined){
+      migration[SHARING_KEYS.defaultExpireDays] = stored[LEGACY_KEYS.defaultExpireDays];
+    }
+    if (Object.keys(migration).length){
+      await browser.storage.local.set(migration);
+    }
+    const legacyKeys = Object.values(LEGACY_KEYS);
+    if (legacyKeys.some((key) => stored[key] !== undefined)){
+      await browser.storage.local.remove(legacyKeys);
+    }
+  }
+
+  return {
+    SHARING_KEYS,
+    migrateLegacySharingKeys
+  };
+})();
