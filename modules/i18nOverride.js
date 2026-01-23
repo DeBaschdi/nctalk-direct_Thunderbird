@@ -8,6 +8,11 @@
   const cache = new Map();
   const pending = new Map();
 
+  /**
+   * Map a language tag to a supported locale bucket.
+   * @param {string} input
+   * @returns {"en"|"de"|"fr"}
+   */
   function normalizeLang(input){
     const raw = String(input || "").toLowerCase();
     if (raw.startsWith("de")) return "de";
@@ -15,6 +20,11 @@
     return "en";
   }
 
+  /**
+   * Resolve "default" to the UI language and normalize to supported locales.
+   * @param {string} requested
+   * @returns {"en"|"de"|"fr"}
+   */
   function getEffectiveLang(requested){
     if (!requested || requested === "default"){
       const ui = global?.browser?.i18n?.getUILanguage
@@ -25,6 +35,11 @@
     return normalizeLang(requested);
   }
 
+  /**
+   * Load and cache the message bundle for a locale.
+   * @param {string} lang
+   * @returns {Promise<object>}
+   */
   async function loadLocale(lang){
     const normalized = normalizeLang(lang);
     if (cache.has(normalized)){
@@ -50,6 +65,12 @@
     return promise;
   }
 
+  /**
+   * Replace $1, $2 ... placeholders with substitutions.
+   * @param {string} message
+   * @param {string[]|string} substitutions
+   * @returns {string}
+   */
   function applySubstitutions(message, substitutions){
     const text = String(message || "");
     if (!substitutions || (Array.isArray(substitutions) && substitutions.length === 0)){
@@ -64,6 +85,14 @@
     return out;
   }
 
+  /**
+   * Translate a key using the selected override language.
+   * Falls back to browser.i18n if the key is missing.
+   * @param {string} lang
+   * @param {string} key
+   * @param {string[]|string} substitutions
+   * @returns {Promise<string>}
+   */
   async function tInLang(lang, key, substitutions){
     const effective = getEffectiveLang(lang);
     const data = await loadLocale(effective);

@@ -14,6 +14,11 @@
   const DIGITS = "23456789";
   const DEFAULT_SYMBOLS = "!@#$%^&*()-_=+?";
 
+  /**
+   * Return a random integer in the range [0, max).
+   * @param {number} max
+   * @returns {number}
+   */
   function getRandomInt(max){
     if (max <= 0){
       return 0;
@@ -26,10 +31,19 @@
     return Math.floor(Math.random() * max);
   }
 
+  /**
+   * Pick a random character from a string.
+   * @param {string} set
+   * @returns {string}
+   */
   function pick(set){
     return set.charAt(getRandomInt(set.length));
   }
 
+  /**
+   * Shuffle array elements in place.
+   * @param {string[]} values
+   */
   function shuffle(values){
     for (let i = values.length - 1; i > 0; i--){
       const j = getRandomInt(i + 1);
@@ -39,6 +53,11 @@
     }
   }
 
+  /**
+   * Generate a password with configurable rules.
+   * @param {{length?:number,requireUpper?:boolean,requireLower?:boolean,requireDigit?:boolean,requireSymbol?:boolean,symbolsSet?:string}} options
+   * @returns {string}
+   */
   function generatePassword(options){
     const opts = options || {};
     const length = Number.isFinite(opts.length) ? Math.max(1, opts.length) : 10;

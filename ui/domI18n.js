@@ -9,6 +9,11 @@
 (function(global){
   "use strict";
 
+  /**
+   * Translate data-i18n attributes and optional title.
+   * @param {Function} i18nFn
+   * @param {{titleKey?:string,titleFallback?:string}} options
+   */
   function translatePage(i18nFn, options){
     if (typeof document === "undefined"){
       return;

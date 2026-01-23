@@ -9,6 +9,11 @@
 (function(global){
   "use strict";
 
+  /**
+   * Escape HTML special characters.
+   * @param {any} value
+   * @returns {string}
+   */
   function escapeHtml(value){
     if (value == null) return "";
     return String(value)
@@ -18,6 +23,12 @@
       .replace(/"/g, "&quot;");
   }
 
+  /**
+   * Normalize a day count with a fallback value.
+   * @param {any} value
+   * @param {any} fallbackDays
+   * @returns {number}
+   */
   function normalizeExpireDays(value, fallbackDays){
     const parsed = parseInt(value, 10);
     if (Number.isFinite(parsed) && parsed > 0){

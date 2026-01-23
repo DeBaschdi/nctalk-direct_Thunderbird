@@ -17,14 +17,14 @@ Login-Flow V2, automatische Raumverfolgung sowie Debug-Logs in [NCBG], [NCUI], [
 - **ESR-ready** 
 Optimiert und getestet für Thunderbird ESR 140.X mit minimalem Experiment-Anteil.
 
-## Was ist neu in 2.2.2?
+## Was ist neu in 2.2.3?
 
 - Neues Branding Nextcloud Enterprise for Thunderbird.
 - Freigabe-Wizard (Umbenennung und klare Abgrenzung zu cloudFile).
 - Optionale Host-Permissions pro Instanz + i18n Fix im Talk-Dialog.
 - Neue Default-Optionen fuer Freigabe und Talk (Share-Name, Rechte, Passwort/Ablauf-Tage, Talk-Titel/Lobby/Listbarkeit/Raumtyp).
 - Erweiterte Spracheinstellungen fuer Freigabe-HTML und Talk-Textblock (default/en/de/fr).
-- Hinweis: Die Add-on-ID wurde geaendert. Bitte die zuvor installierte Version deinstallieren, bevor 2.2.2 installiert wird.
+- Hinweis: Die Add-on-ID wurde geaendert. Bitte Versionen <=2.2.1 deinstallieren, bevor 2.2.3 installiert wird.
 
 ## Funktionsüberblick
 
@@ -50,7 +50,7 @@ Optimiert und getestet für Thunderbird ESR 140.X mit minimalem Experiment-Antei
 
 ## Installation
 1. Aktuelle XPI 
-nextcloud-enterprise-2.2.2.xpi in Thunderbird installieren (Add-ons ? Zahnrad ? Add-on aus Datei installieren).
+nextcloud-enterprise-2.2.3.xpi in Thunderbird installieren (Add-ons ? Zahnrad ? Add-on aus Datei installieren).
 2. Thunderbird neu starten.
 3. In den Add-on-Optionen Basis-URL, Benutzer und App-Passwort hinterlegen oder den Login Flow starten.
 

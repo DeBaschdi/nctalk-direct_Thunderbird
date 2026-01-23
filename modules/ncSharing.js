@@ -16,6 +16,11 @@
   const INVALID_PATH_CHARS = /[\\/:*?"<>|]/g;
   let cachedLogoBase64 = null;
 
+  /**
+   * Debug logger scoped to the sharing module.
+   * @param {object} opts
+   * @param {...any} args
+   */
   function logDebug(opts, ...args){
     if (!opts?.debugEnabled){
       return;
@@ -30,6 +35,12 @@
     : null;
   const escapeHtml = NCTalkTextUtils.escapeHtml;
 
+  /**
+   * Translate a key with fallback to browser.i18n.
+   * @param {string} key
+   * @param {string[]|string} substitutions
+   * @returns {string}
+   */
   function i18n(key, substitutions = []){
     if (sharedTranslator){
       try{
@@ -53,10 +64,19 @@
     return key || "";
   }
 
+  /**
+   * Create a host-permission error with a localized message.
+   * @returns {Error}
+   */
   function hostPermissionError(){
     return new Error(i18n("error_host_permission_missing"));
   }
 
+  /**
+   * Ensure the optional host permission for the configured base URL is present.
+   * @param {string} baseUrl
+   * @returns {Promise<boolean>}
+   */
   async function ensureHostPermission(baseUrl){
     if (typeof NCHostPermissions === "undefined" || !NCHostPermissions?.hasOriginPermission){
       return true;
@@ -68,6 +88,10 @@
     return true;
   }
 
+  /**
+   * Read the configured language override for the sharing HTML block.
+   * @returns {Promise<string>}
+   */
   async function getShareBlockLang(){
     if (typeof browser === "undefined" || !browser?.storage?.local){
       return "default";
@@ -76,6 +100,13 @@
     return stored.shareBlockLang || "default";
   }
 
+  /**
+   * Translate a key in the desired language (override-aware).
+   * @param {string} lang
+   * @param {string} key
+   * @param {string[]|string} substitutions
+   * @returns {Promise<string>}
+   */
   async function tShare(lang, key, substitutions = []){
     if (typeof NCI18nOverride !== "undefined" && typeof NCI18nOverride.tInLang === "function"){
       const translated = await NCI18nOverride.tInLang(lang, key, substitutions);
@@ -86,6 +117,11 @@
     return i18n(key, substitutions);
   }
 
+  /**
+   * Sanitize and normalize a share name for use in folder names.
+   * @param {string} value
+   * @returns {string}
+   */
   function sanitizeShareName(value){
     const fallback = i18n("sharing_share_default") || "Freigabe";
     if (!value) return fallback;
@@ -93,12 +129,23 @@
     return normalized || fallback;
   }
 
+  /**
+   * Sanitize file names to avoid invalid path characters.
+   * @param {string} value
+   * @param {string} fallback
+   * @returns {string}
+   */
   function sanitizeFileName(value, fallback = "Datei"){
     if (!value && value !== 0) return fallback;
     const normalized = String(value).normalize("NFKC").replace(INVALID_PATH_CHARS, "_").trim();
     return normalized || fallback;
   }
 
+  /**
+   * Format a Date as YYYYMMDD for folder naming.
+   * @param {Date} date
+   * @returns {string}
+   */
   function formatDateForFolder(date){
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -106,11 +153,22 @@
     return `${year}${month}${day}`;
   }
 
+  /**
+   * Normalize a relative path to forward-slash form.
+   * @param {string} path
+   * @returns {string}
+   */
   function normalizeRelativePath(path){
     if (!path) return "";
     return String(path).replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "");
   }
 
+  /**
+   * Join two relative path segments.
+   * @param {string} base
+   * @param {string} child
+   * @returns {string}
+   */
   function joinRelativePath(base, child){
     const normalizedBase = normalizeRelativePath(base);
     const normalizedChild = normalizeRelativePath(child);
@@ -119,6 +177,13 @@
     return normalizedBase + "/" + normalizedChild;
   }
 
+  /**
+   * Build the folder info for a share (base folder + date + share name).
+   * @param {string} basePath
+   * @param {string} shareName
+   * @param {Date} referenceDate
+   * @returns {{date:Date,folderName:string,relativeBase:string,relativeFolder:string}}
+   */
   function buildShareFolderInfo(basePath, shareName, referenceDate){
     const dateObj = referenceDate instanceof Date ? referenceDate : new Date();
     const folderName = `${formatDateForFolder(dateObj)}_${sanitizeShareName(shareName)}`;
@@ -132,6 +197,11 @@
     };
   }
 
+  /**
+   * Normalize and sanitize a relative directory for upload.
+   * @param {string} dir
+   * @returns {string}
+   */
   function sanitizeRelativeDir(dir){
     if (!dir) return "";
     return String(dir)
@@ -141,6 +211,11 @@
       .join("/");
   }
 
+  /**
+   * Check if a DAV path exists.
+   * @param {{davRoot:string,relativePath:string,authHeader:string}} options
+   * @returns {Promise<boolean>}
+   */
   async function pathExists({ davRoot, relativePath, authHeader }){
     const cleanPath = normalizeRelativePath(relativePath || "");
     if (!cleanPath){
@@ -167,6 +242,13 @@
     return true;
   }
 
+  /**
+   * Ensure each segment of a relative path exists in WebDAV.
+   * @param {string} davRoot
+   * @param {string} relativePath
+   * @param {string} authHeader
+   * @returns {Promise<void>}
+   */
   async function ensureFolderExists(davRoot, relativePath, authHeader){
     const segments = normalizeRelativePath(relativePath).split("/").filter(Boolean);
     let current = "";
@@ -189,6 +271,13 @@
     }
   }
 
+  /**
+   * Delete a remote DAV path (file or folder).
+   * @param {string} davRoot
+   * @param {string} relativePath
+   * @param {string} authHeader
+   * @returns {Promise<boolean>}
+   */
   async function deleteRemotePath(davRoot, relativePath, authHeader){
     const clean = normalizeRelativePath(relativePath);
     if (!clean){
@@ -211,10 +300,20 @@
     return true;
   }
 
+  /**
+   * Encode each path segment for DAV requests.
+   * @param {string} path
+   * @returns {string}
+   */
   function encodePath(path){
     return path.split("/").map((segment) => encodeURIComponent(segment)).join("/");
   }
 
+  /**
+   * Upload a file with progress callbacks.
+   * @param {object} options
+   * @returns {Promise<void>}
+   */
   async function uploadFile({ davRoot, relativeFolder, fileName, file, authHeader, progressCb, statusCb, displayPath, itemId }){
     const relativePath = joinRelativePath(relativeFolder, fileName);
     const url = davRoot + "/" + encodePath(relativePath);
@@ -268,6 +367,11 @@
     });
   }
 
+  /**
+   * Convert permission flags into a Nextcloud permission mask.
+   * @param {{read?:boolean,write?:boolean,create?:boolean,delete?:boolean}} perms
+   * @returns {number}
+   */
   function buildPermissionMask(perms){
     let mask = 0;
     if (perms?.read) mask |= PERMISSION_FLAGS.read;
@@ -280,6 +384,17 @@
     return mask;
   }
 
+  /**
+   * Create a Nextcloud share via OCS.
+   * @param {string} baseUrl
+   * @param {string} relativeFolder
+   * @param {string} authHeader
+   * @param {object} perms
+   * @param {string} password
+   * @param {string} expireDate
+   * @param {boolean} publicUpload
+   * @returns {Promise<{url:string,token:string,id:string}>}
+   */
   async function requestShare(baseUrl, relativeFolder, authHeader, perms, password, expireDate, publicUpload){
     const url = baseUrl.replace(/\/+$/, "") + "/ocs/v2.php/apps/files_sharing/api/v1/shares";
     const params = new URLSearchParams();
@@ -319,6 +434,11 @@
     };
   }
 
+  /**
+   * Update share metadata (label, note, permissions, expiry, password).
+   * @param {object} options
+   * @returns {Promise<void>}
+   */
   async function updateShareMetadata({ baseUrl, shareId, authHeader, note, permissions, expireDate, password, label }){
     if (!shareId){
       return;
@@ -352,6 +472,10 @@
     }
   }
 
+  /**
+   * Load and cache the Nextcloud logo as base64 for HTML insertion.
+   * @returns {Promise<string>}
+   */
   async function getLogoBase64(){
     if (cachedLogoBase64){
       return cachedLogoBase64;
@@ -370,6 +494,11 @@
     return cachedLogoBase64;
   }
 
+  /**
+   * Check if the share folder already exists in WebDAV.
+   * @param {{shareName:string,basePath:string,shareDate?:Date}} options
+   * @returns {Promise<{exists:boolean,folderInfo:object}>}
+   */
   async function checkShareFolderAvailability({ shareName, basePath, shareDate } = {}){
     const opts = await NCCore.getOpts();
     if (!opts.baseUrl || !opts.user || !opts.appPass){
@@ -399,6 +528,11 @@
     };
   }
 
+  /**
+   * Check if a remote file/folder exists under the current user's DAV root.
+   * @param {string|{relativePath:string}} input
+   * @returns {Promise<boolean>}
+   */
   async function checkRemotePathExists(input){
     const opts = await NCCore.getOpts();
     if (!opts.baseUrl || !opts.user || !opts.appPass){
@@ -414,6 +548,12 @@
     return exists;
   }
 
+  /**
+   * Build the HTML block inserted into the compose body.
+   * @param {object} result
+   * @param {object} request
+   * @returns {Promise<string>}
+   */
   async function buildHtmlBlock(result, request){
     const shareLang = await getShareBlockLang();
     const logo = await getLogoBase64();
@@ -471,6 +611,12 @@
 </div>`;
   }
 
+  /**
+   * Build a two-column HTML row for the share block.
+   * @param {string} label
+   * @param {string} valueHtml
+   * @returns {string}
+   */
   function buildTableRow(label, valueHtml){
     if (!valueHtml){
       return "";
@@ -481,6 +627,12 @@
     </tr>`;
   }
 
+  /**
+   * Build the permissions badge table for the HTML block.
+   * @param {object} perms
+   * @param {object} labels
+   * @returns {string}
+   */
   function buildPermissionsBadges(perms, labels = {}){
     const safePerms = perms || {};
     const entries = [
@@ -625,6 +777,10 @@
     };
   }
 
+  /**
+   * Load the configured sharing base path from storage.
+   * @returns {Promise<string>}
+   */
   async function getFileLinkBasePath(){
     if (typeof browser === "undefined" || !browser?.storage?.local){
       return DEFAULT_BASE_PATH;
@@ -666,6 +822,11 @@
     logDebug(opts, "share:updateMeta:done", { shareId: shareInfo.shareId });
   }
 
+  /**
+   * Delete the share folder on the server.
+   * @param {{folderInfo:Object}} options
+   * @returns {Promise<boolean>}
+   */
   async function deleteShareFolder({ folderInfo } = {}){
     if (!folderInfo?.relativeFolder){
       return false;

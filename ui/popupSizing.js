@@ -33,6 +33,10 @@
     let resizeTimer = null;
     let boundsPromise = null;
 
+    /**
+     * Compute the difference between outer and inner window width.
+     * @returns {number}
+     */
     function getFrameWidth(){
       if (typeof window.outerWidth === "number" && typeof window.innerWidth === "number"){
         return Math.max(0, window.outerWidth - window.innerWidth);
@@ -42,6 +46,10 @@
       return Math.max(0, winWidth - docWidth);
     }
 
+    /**
+     * Compute the difference between outer and inner window height.
+     * @returns {number}
+     */
     function getFrameHeight(){
       if (typeof window.outerHeight === "number" && typeof window.innerHeight === "number"){
         return Math.max(0, window.outerHeight - window.innerHeight);
@@ -51,6 +59,9 @@
       return Math.max(0, winHeight - docHeight);
     }
 
+    /**
+     * Enforce a fixed outer width for the popup window.
+     */
     function enforceFixedWidth(){
       if (!fixedWidth) return;
       try{
@@ -68,6 +79,9 @@
       }catch(_){ }
     }
 
+    /**
+     * Enforce a minimum outer height for the popup window.
+     */
     function enforceMinHeight(){
       if (!minHeight && !margin) return;
       try{
@@ -87,6 +101,10 @@
       }catch(_){ }
     }
 
+    /**
+     * Compute desired outer dimensions based on content.
+     * @returns {{desiredWidth:number,desiredHeight:number}}
+     */
     function getDesiredOuterSize(){
       const frameWidth = getFrameWidth();
       const frameHeight = getFrameHeight();
@@ -97,6 +115,10 @@
       return { desiredWidth, desiredHeight };
     }
 
+    /**
+     * Apply the desired window bounds via the Windows API.
+     * @returns {void}
+     */
     function enforceWindowBoundsAsync(){
       if (!browser?.windows?.getCurrent || !browser?.windows?.update){
         return;
@@ -135,6 +157,9 @@
       })();
     }
 
+    /**
+     * Schedule a size update using debounce.
+     */
     function scheduleSizeUpdate(){
       if (resizeTimer){
         window.clearTimeout(resizeTimer);

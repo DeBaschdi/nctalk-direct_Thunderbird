@@ -5,6 +5,9 @@
  */
 'use strict';
 
+/**
+ * Storage helpers for sharing defaults and legacy key migration.
+ */
 const NCSharingStorage = (() => {
   const SHARING_KEYS = {
     basePath: "sharingBasePath",
@@ -26,6 +29,10 @@ const NCSharingStorage = (() => {
   };
   const ALL_KEYS = Object.values(SHARING_KEYS).concat(Object.values(LEGACY_KEYS));
 
+  /**
+   * Migrate legacy filelink storage keys to sharing keys and clean up old entries.
+   * @returns {Promise<void>}
+   */
   async function migrateLegacySharingKeys(){
     if (typeof browser === "undefined" || !browser?.storage?.local){
       return;

@@ -85,30 +85,6 @@
         ]
       },
       {
-        "name": "onLobbyUpdate",
-        "type": "function",
-        "description": "Fired when the startzeit of a room changes and the lobby timer must be updated.",
-        "parameters": [
-          {
-            "name": "details",
-            "type": "object",
-            "properties": {
-              "token": {
-                "type": "string"
-              },
-              "enableLobby": {
-                "type": "boolean",
-                "optional": true
-              },
-              "startTimestamp": {
-                "type": "integer",
-                "optional": true
-              }
-            }
-          }
-        ]
-      },
-      {
         "name": "onUtilityRequest",
         "type": "function",
         "description": "General purpose handler for config and lookup requests.",

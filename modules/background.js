@@ -9,8 +9,11 @@
  * Handles API calls (Talk + CardDAV), caching, and messaging utilities.
  */
 const ROOM_META_KEY = "nctalkRoomMeta";
+const EVENT_TOKEN_MAP_KEY = "nctalkEventTokenMap";
 let DEBUG_ENABLED = false;
 let ROOM_META = {};
+let EVENT_TOKEN_MAP = {};
+const TALK_LINK_REGEX = /(https?:\/\/[^\s"'<>]+\/call\/([A-Za-z0-9_-]+))/i;
 const TALK_POPUP_WIDTH = 540;
 const TALK_POPUP_HEIGHT = 860;
 const SHARING_POPUP_WIDTH = 660;
@@ -21,9 +24,10 @@ const SHARING_POPUP_HEIGHT = 760;
     if (NCSharingStorage?.migrateLegacySharingKeys){
       await NCSharingStorage.migrateLegacySharingKeys();
     }
-    const stored = await browser.storage.local.get(["debugEnabled", ROOM_META_KEY]);
+    const stored = await browser.storage.local.get(["debugEnabled", ROOM_META_KEY, EVENT_TOKEN_MAP_KEY]);
     DEBUG_ENABLED = !!stored.debugEnabled;
     ROOM_META = stored[ROOM_META_KEY] || {};
+    EVENT_TOKEN_MAP = stored[EVENT_TOKEN_MAP_KEY] || {};
   }catch(_){ }
 })();
 browser.storage.onChanged.addListener((changes, area) => {
@@ -34,7 +38,14 @@ browser.storage.onChanged.addListener((changes, area) => {
   if (Object.prototype.hasOwnProperty.call(changes, ROOM_META_KEY)){
     ROOM_META = changes[ROOM_META_KEY].newValue || {};
   }
+  if (Object.prototype.hasOwnProperty.call(changes, EVENT_TOKEN_MAP_KEY)){
+    EVENT_TOKEN_MAP = changes[EVENT_TOKEN_MAP_KEY].newValue || {};
+  }
 });
+/**
+ * Log helper gated by the debug flag.
+ * @param {...any} a
+ */
 function L(...a){
   if (!DEBUG_ENABLED) return;
   try{
@@ -42,6 +53,12 @@ function L(...a){
   }catch(_){ }
 }
 
+/**
+ * Shorten a token for log output.
+ * @param {string} token
+ * @param {{keepStart?:number, keepEnd?:number}} options
+ * @returns {string}
+ */
 function shortToken(token, { keepStart = 4, keepEnd = 3 } = {}){
   if (!token) return "";
   const str = String(token);
@@ -51,6 +68,12 @@ function shortToken(token, { keepStart = 4, keepEnd = 3 } = {}){
   return str.slice(0, keepStart) + "..." + str.slice(str.length - keepEnd);
 }
 
+/**
+ * Shorten a string identifier for logs.
+ * @param {string} value
+ * @param {number} max
+ * @returns {string}
+ */
 function shortId(value, max = 12){
   if (value == null) return "";
   const str = String(value);
@@ -83,6 +106,12 @@ browser.composeAction.onClicked.addListener(async (tab) => {
   }
 });
 
+/**
+ * Merge and persist room metadata for a Talk token.
+ * @param {string} token
+ * @param {object} data
+ * @returns {Promise<void>}
+ */
 async function setRoomMeta(token, data = {}){
   if (!token) return;
   const next = Object.assign({}, ROOM_META[token], data, { updated: Date.now() });
@@ -94,6 +123,11 @@ async function setRoomMeta(token, data = {}){
   }
 }
 
+/**
+ * Remove cached room metadata for a token.
+ * @param {string} token
+ * @returns {Promise<void>}
+ */
 async function deleteRoomMeta(token){
   if (!token || !ROOM_META[token]) return;
   delete ROOM_META[token];
@@ -104,11 +138,94 @@ async function deleteRoomMeta(token){
   }
 }
 
+/**
+ * Read cached room metadata for a token.
+ * @param {string} token
+ * @returns {object|null}
+ */
 function getRoomMeta(token){
   if (!token) return null;
   return ROOM_META[token] || null;
 }
 
+/**
+ * Build the storage key for a calendar item mapping.
+ * @param {string} calendarId
+ * @param {string} itemId
+ * @returns {string}
+ */
+function makeEventMapKey(calendarId, itemId){
+  if (!calendarId || !itemId){
+    return "";
+  }
+  return `${calendarId}::${itemId}`;
+}
+
+/**
+ * Lookup a stored token mapping for a calendar item.
+ * @param {string} calendarId
+ * @param {string} itemId
+ * @returns {{token:string,url?:string,updated?:number}|null}
+ */
+function getEventTokenEntry(calendarId, itemId){
+  const key = makeEventMapKey(calendarId, itemId);
+  if (!key) return null;
+  return EVENT_TOKEN_MAP[key] || null;
+}
+
+/**
+ * Persist the token mapping for a calendar item.
+ * @param {string} calendarId
+ * @param {string} itemId
+ * @param {{token:string,url?:string}} entry
+ * @returns {Promise<void>}
+ */
+async function setEventTokenEntry(calendarId, itemId, entry){
+  const key = makeEventMapKey(calendarId, itemId);
+  if (!key || !entry?.token){
+    return;
+  }
+  const next = Object.assign({}, EVENT_TOKEN_MAP, {
+    [key]: {
+      token: entry.token,
+      url: entry.url || "",
+      updated: Date.now()
+    }
+  });
+  EVENT_TOKEN_MAP = next;
+  try{
+    await browser.storage.local.set({ [EVENT_TOKEN_MAP_KEY]: next });
+  }catch(e){
+    console.error("[NCBG] event token map save failed", e);
+  }
+}
+
+/**
+ * Remove the token mapping for a calendar item.
+ * @param {string} calendarId
+ * @param {string} itemId
+ * @returns {Promise<void>}
+ */
+async function removeEventTokenEntry(calendarId, itemId){
+  const key = makeEventMapKey(calendarId, itemId);
+  if (!key || !EVENT_TOKEN_MAP[key]){
+    return;
+  }
+  const next = Object.assign({}, EVENT_TOKEN_MAP);
+  delete next[key];
+  EVENT_TOKEN_MAP = next;
+  try{
+    await browser.storage.local.set({ [EVENT_TOKEN_MAP_KEY]: next });
+  }catch(e){
+    console.error("[NCBG] event token map remove failed", e);
+  }
+}
+
+/**
+ * Decode a base64 avatar into pixel data.
+ * @param {{base64:string,mime?:string}} options
+ * @returns {Promise<{width:number,height:number,pixels:number[],byteLength:number}>}
+ */
 async function decodeAvatarPixels({ base64, mime } = {}){
   const clean = String(base64 || "").replace(/\s+/g, "");
   if (!clean){
@@ -514,6 +631,589 @@ browser.runtime.onMessage.addListener(async (msg) => {
   }
 });
 
+/**
+ * Update lobby/start time based on a calendar event change.
+ * @param {{token:string,startTimestamp?:number,delegateId?:string,delegated?:boolean,lobbyEnabled?:boolean}} payload
+ * @returns {Promise<{ok:boolean,skipped?:boolean,reason?:string,error?:string}>}
+ */
+async function applyCalendarLobbyUpdate(payload = {}){
+  const token = payload?.token;
+  if (!token){
+    return { ok:false, error: bgI18n("error_room_token_missing") };
+  }
+  const meta = getRoomMeta(token) || {};
+  const { user: currentUserRaw } = await NCCore.getOpts();
+  const delegateIdRaw = (payload?.delegateId ?? meta.delegateId ?? "").trim();
+  const delegateTarget = delegateIdRaw.toLowerCase();
+  const currentUser = (currentUserRaw || "").trim().toLowerCase();
+  const delegated = payload?.delegated === true || meta.delegated === true;
+  const incomingStart = typeof payload?.startTimestamp === "number" ? payload.startTimestamp : null;
+  const metaStart = typeof meta.startTimestamp === "number" ? meta.startTimestamp : null;
+
+  if (DEBUG_ENABLED){
+    L("calendar lobby update payload", {
+      token: shortToken(token),
+      delegate: delegateTarget ? shortId(delegateTarget, 20) : "",
+      delegated,
+      startTimestamp: incomingStart,
+      metaStart
+    });
+  }
+
+  if (payload?.lobbyEnabled === false || meta.lobbyEnabled === false){
+    return { ok:false, skipped:true, reason:"lobbyDisabled" };
+  }
+
+  if (delegateTarget && currentUser && delegateTarget !== currentUser){
+    if (delegated){
+      L("calendar lobby update skipped (delegate mismatch)", {
+        token: shortToken(token),
+        delegate: delegateIdRaw || meta.delegateId || "",
+        currentUser: currentUserRaw || ""
+      });
+      return { ok:false, skipped:true, reason:"delegateMismatch" };
+    }
+    L("calendar lobby update by owner before delegation", {
+      token: shortToken(token),
+      delegate: delegateIdRaw || meta.delegateId || "",
+      currentUser: currentUserRaw || ""
+    });
+  }
+
+  const startTs = incomingStart ?? metaStart;
+  if (typeof startTs !== "number"){
+    return { ok:false, error: bgI18n("error_unknown_utility_request") };
+  }
+  if (metaStart === startTs){
+    L("calendar lobby update skipped (unchanged start)", {
+      token: shortToken(token),
+      startTimestamp: startTs
+    });
+    return { ok:true, skipped:true, reason:"startUnchanged" };
+  }
+
+  L("calendar lobby update apply", { token: shortToken(token), startTimestamp: startTs });
+  await updateTalkLobby({
+    token,
+    enableLobby: true,
+    startTimestamp: startTs
+  });
+  await setRoomMeta(token, {
+    lobbyEnabled: true,
+    startTimestamp: startTs
+  });
+  L("calendar lobby update success", { token: shortToken(token), startTimestamp: startTs });
+  return { ok:true };
+}
+
+/**
+ * Delegate moderator role after calendar changes when ready.
+ * @param {{token:string,delegateId:string,delegateName?:string}} payload
+ * @returns {Promise<{ok:boolean,skipped?:boolean,reason?:string,error?:string,result?:object}>}
+ */
+async function applyCalendarDelegation(payload = {}){
+  const token = payload?.token;
+  const delegateId = payload?.delegateId;
+  if (!token || !delegateId){
+    return { ok:false, error: bgI18n("error_delegation_data_missing") };
+  }
+  const { user } = await NCCore.getOpts();
+  const targetNorm = String(delegateId).trim().toLowerCase();
+  const currentNorm = (user || "").trim().toLowerCase();
+  if (targetNorm === currentNorm){
+    L("calendar delegation skipped (same user)", { token: shortToken(token), delegate: delegateId });
+    return { ok:false, skipped:true, reason:"sameUser" };
+  }
+  const result = await delegateRoomModerator({ token, newModerator: delegateId });
+  await setRoomMeta(token, {
+    delegated: true,
+    delegateId,
+    delegateName: payload?.delegateName || delegateId
+  });
+  return { ok:true, result };
+}
+
+/**
+ * Unfold iCalendar lines (continuations starting with space or tab).
+ * @param {string} ical
+ * @returns {string}
+ */
+function unfoldIcal(ical){
+  if (!ical) return "";
+  return String(ical).replace(/\r?\n[ \t]/g, "");
+}
+
+/**
+ * Parse a single iCalendar content line into name/params/value.
+ * @param {string} line
+ * @returns {{name:string,params:Object,value:string}|null}
+ */
+function parseIcalLine(line){
+  if (!line) return null;
+  const idx = line.indexOf(":");
+  if (idx < 0) return null;
+  const left = line.slice(0, idx);
+  const value = line.slice(idx + 1);
+  const parts = left.split(";");
+  const name = parts.shift();
+  if (!name) return null;
+  const params = {};
+  for (const part of parts){
+    const [key, val] = part.split("=");
+    if (key && val){
+      params[key.toUpperCase()] = val;
+    }
+  }
+  return { name: name.toUpperCase(), params, value };
+}
+
+/**
+ * Unescape iCalendar text values.
+ * @param {string} value
+ * @returns {string}
+ */
+function unescapeIcalText(value){
+  if (!value) return "";
+  return String(value)
+    .replace(/\\\\/g, "\\")
+    .replace(/\\n/gi, "\n")
+    .replace(/\\,/g, ",")
+    .replace(/\\;/g, ";");
+}
+
+/**
+ * Parse a boolean-like property value.
+ * @param {string|boolean|number} value
+ * @returns {boolean|null}
+ */
+function parseBooleanProp(value){
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string"){
+    const norm = value.trim().toLowerCase();
+    if (norm === "true" || norm === "1" || norm === "yes") return true;
+    if (norm === "false" || norm === "0" || norm === "no") return false;
+  }
+  return null;
+}
+
+/**
+ * Parse a numeric property value.
+ * @param {string|number} value
+ * @returns {number|null}
+ */
+function parseNumberProp(value){
+  if (typeof value === "number" && Number.isFinite(value)){
+    return value;
+  }
+  if (typeof value === "string"){
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = parseInt(trimmed, 10);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
+}
+
+/**
+ * Calculate the time zone offset for a Date in a specific time zone.
+ * @param {string} timeZone
+ * @param {Date} date
+ * @returns {number|null}
+ */
+function getTimeZoneOffsetMs(timeZone, date){
+  try{
+    const dtf = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour12: false,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit"
+    });
+    const parts = dtf.formatToParts(date);
+    const values = {};
+    for (const part of parts){
+      if (part.type !== "literal"){
+        values[part.type] = part.value;
+      }
+    }
+    const asUTC = Date.UTC(
+      Number(values.year),
+      Number(values.month) - 1,
+      Number(values.day),
+      Number(values.hour),
+      Number(values.minute),
+      Number(values.second)
+    );
+    return asUTC - date.getTime();
+  }catch(_){
+    return null;
+  }
+}
+
+/**
+ * Convert local date parts in a time zone to a UTC timestamp.
+ * @param {number} year
+ * @param {number} month
+ * @param {number} day
+ * @param {number} hour
+ * @param {number} minute
+ * @param {number} second
+ * @param {string} tzid
+ * @returns {number}
+ */
+function zonedTimeToUtc(year, month, day, hour, minute, second, tzid){
+  const utcGuess = Date.UTC(year, month - 1, day, hour, minute, second);
+  const offset = tzid ? getTimeZoneOffsetMs(tzid, new Date(utcGuess)) : null;
+  return offset == null ? utcGuess : utcGuess - offset;
+}
+
+/**
+ * Parse an iCalendar DATE or DATE-TIME into unix seconds.
+ * @param {string} rawValue
+ * @param {string} tzid
+ * @returns {number|null}
+ */
+function parseIcalDateTime(rawValue, tzid){
+  if (!rawValue) return null;
+  const value = String(rawValue).trim();
+  if (!value) return null;
+  const isDateOnly = /^\d{8}$/.test(value);
+  const isDateTime = /^\d{8}T\d{6}Z?$/.test(value);
+  if (!isDateOnly && !isDateTime){
+    return null;
+  }
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(4, 6));
+  const day = Number(value.slice(6, 8));
+  let hour = 0;
+  let minute = 0;
+  let second = 0;
+  if (isDateTime){
+    hour = Number(value.slice(9, 11));
+    minute = Number(value.slice(11, 13));
+    second = Number(value.slice(13, 15));
+  }
+  if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)){
+    return null;
+  }
+  const hasZ = value.endsWith("Z");
+  if (hasZ || String(tzid || "").toUpperCase() === "UTC"){
+    const utc = Date.UTC(year, month - 1, day, hour, minute, second);
+    return Math.floor(utc / 1000);
+  }
+  if (tzid){
+    const utc = zonedTimeToUtc(year, month, day, hour, minute, second, tzid);
+    return Math.floor(utc / 1000);
+  }
+  const local = new Date(year, month - 1, day, hour, minute, second);
+  if (Number.isNaN(local.getTime())){
+    return null;
+  }
+  return Math.floor(local.getTime() / 1000);
+}
+
+/**
+ * Extract event properties and start/end fields from VEVENT.
+ * @param {string} ical
+ * @returns {{props:Object,dtStart:{value:string,tzid:string}|null,dtEnd:{value:string,tzid:string}|null}}
+ */
+function parseIcalEventData(ical){
+  const props = {};
+  let dtStart = null;
+  let dtEnd = null;
+  if (!ical) return { props, dtStart, dtEnd };
+  const lines = unfoldIcal(ical).split(/\r?\n/);
+  let inEvent = false;
+  for (const line of lines){
+    if (!line) continue;
+    if (line === "BEGIN:VEVENT"){
+      inEvent = true;
+      continue;
+    }
+    if (line === "END:VEVENT"){
+      if (inEvent) break;
+      continue;
+    }
+    if (!inEvent) continue;
+    const parsed = parseIcalLine(line);
+    if (!parsed) continue;
+    const name = parsed.name;
+    const value = unescapeIcalText(parsed.value);
+    if (name === "DTSTART"){
+      dtStart = { value: parsed.value, tzid: parsed.params.TZID || null };
+    }else if (name === "DTEND"){
+      dtEnd = { value: parsed.value, tzid: parsed.params.TZID || null };
+    }
+    props[name] = value;
+  }
+  return { props, dtStart, dtEnd };
+}
+
+/**
+ * Extract Talk link/token from iCal properties.
+ * @param {object} props
+ * @returns {{token:string,url:string}|null}
+ */
+function extractTalkLinkFromProps(props){
+  const propToken = props["X-NCTALK-TOKEN"];
+  if (propToken){
+    const propUrl = props["X-NCTALK-URL"];
+    return {
+      token: propToken,
+      url: propUrl || ("https://nextcloud.local/call/" + propToken)
+    };
+  }
+  const candidates = [
+    props["LOCATION"],
+    props["DESCRIPTION"],
+    props["URL"],
+    props["SUMMARY"]
+  ];
+  for (const text of candidates){
+    if (!text) continue;
+    const match = TALK_LINK_REGEX.exec(text);
+    if (match){
+      return { url: match[1], token: match[2] };
+    }
+  }
+  return null;
+}
+
+/**
+ * Parse Talk metadata from an iCal VEVENT payload.
+ * @param {string} ical
+ * @returns {object}
+ */
+function extractTalkMetadataFromIcal(ical){
+  const { props, dtStart, dtEnd } = parseIcalEventData(ical);
+  const link = extractTalkLinkFromProps(props) || {};
+  const startProp = parseNumberProp(props["X-NCTALK-START"]);
+  const startFromDt = parseIcalDateTime(dtStart?.value || "", dtStart?.tzid || null);
+  const endFromDt = parseIcalDateTime(dtEnd?.value || "", dtEnd?.tzid || null);
+  const delegateReadyRaw = props["X-NCTALK-DELEGATE-READY"];
+  return {
+    token: link.token || "",
+    url: link.url || "",
+    title: props["SUMMARY"] || "",
+    lobbyEnabled: parseBooleanProp(props["X-NCTALK-LOBBY"]),
+    startProp,
+    startFromDt,
+    startTimestamp: startProp ?? startFromDt,
+    endTimestamp: endFromDt,
+    eventConversation: (() => {
+      const raw = props["X-NCTALK-EVENT"];
+      if (!raw) return null;
+      return raw.trim().toLowerCase() === "event";
+    })(),
+    objectId: props["X-NCTALK-OBJECTID"] || "",
+    delegateId: props["X-NCTALK-DELEGATE"] || "",
+    delegateName: props["X-NCTALK-DELEGATE-NAME"] || "",
+    delegated: parseBooleanProp(props["X-NCTALK-DELEGATED"]),
+    delegateReady: parseBooleanProp(delegateReadyRaw),
+    delegateReadyKnown: Object.prototype.hasOwnProperty.call(props, "X-NCTALK-DELEGATE-READY")
+  };
+}
+
+/**
+ * Apply property updates to the first VEVENT in an iCal payload.
+ * @param {string} ical
+ * @param {Object<string,string|null>} updates
+ * @returns {{ical:string,changed:boolean}}
+ */
+function applyIcalPropertyUpdates(ical, updates){
+  if (!ical || !updates) return { ical, changed:false };
+  const updateKeys = Object.keys(updates).map((key) => key.toUpperCase());
+  if (!updateKeys.length) return { ical, changed:false };
+  const updateMap = {};
+  updateKeys.forEach((key) => {
+    updateMap[key] = updates[key];
+  });
+  const lines = String(ical).split(/\r?\n/);
+  const result = [];
+  const seen = {};
+  let inEvent = false;
+  let eventIndex = 0;
+  let changed = false;
+
+  for (const line of lines){
+    if (line === "BEGIN:VEVENT"){
+      inEvent = true;
+      eventIndex++;
+      result.push(line);
+      continue;
+    }
+    if (line === "END:VEVENT" && inEvent && eventIndex === 1){
+      for (const key of updateKeys){
+        const value = updateMap[key];
+        if (!seen[key] && value != null){
+          result.push(`${key}:${value}`);
+          changed = true;
+        }
+      }
+      result.push(line);
+      inEvent = false;
+      continue;
+    }
+    if (inEvent && eventIndex === 1){
+      const parsed = parseIcalLine(line);
+      if (parsed && Object.prototype.hasOwnProperty.call(updateMap, parsed.name)){
+        seen[parsed.name] = true;
+        const nextValue = updateMap[parsed.name];
+        if (nextValue == null){
+          changed = true;
+          continue;
+        }
+        const nextLine = `${parsed.name}:${nextValue}`;
+        if (nextLine !== line){
+          changed = true;
+        }
+        result.push(nextLine);
+        continue;
+      }
+    }
+    result.push(line);
+  }
+  return { ical: result.join("\r\n"), changed };
+}
+
+/**
+ * Persist metadata updates back to the calendar item.
+ * @param {{calendarId:string,id:string,format:string,item:string}} item
+ * @param {Object<string,string|null>} updates
+ * @returns {Promise<boolean>}
+ */
+async function updateCalendarItemProps(item, updates){
+  if (!item || item.format !== "ical" || !item.item){
+    return false;
+  }
+  const { ical, changed } = applyIcalPropertyUpdates(item.item, updates);
+  if (!changed){
+    return false;
+  }
+  try{
+    await browser.calendar.items.update(item.calendarId, item.id, {
+      format: "ical",
+      item: ical,
+      returnFormat: "ical"
+    });
+    return true;
+  }catch(e){
+    console.error("[NCBG] calendar item update failed", e);
+    return false;
+  }
+}
+
+/**
+ * Handle calendar item creates/updates and keep Talk room state in sync.
+ * @param {object} item
+ * @returns {Promise<void>}
+ */
+async function handleCalendarItemUpsert(item){
+  try{
+    if (!item || item.type !== "event"){
+      return;
+    }
+    const meta = extractTalkMetadataFromIcal(item.item || "");
+    if (!meta?.token){
+      return;
+    }
+    await setEventTokenEntry(item.calendarId, item.id, { token: meta.token, url: meta.url });
+
+    if (typeof meta.startTimestamp === "number" && meta.lobbyEnabled !== false){
+      await applyCalendarLobbyUpdate({
+        token: meta.token,
+        startTimestamp: meta.startTimestamp,
+        delegateId: meta.delegateId || "",
+        delegated: meta.delegated === true,
+        lobbyEnabled: meta.lobbyEnabled
+      });
+    }
+
+    const updates = {};
+    if (meta.lobbyEnabled != null){
+      updates.lobbyEnabled = meta.lobbyEnabled;
+    }
+    if (meta.eventConversation != null){
+      updates.eventConversation = meta.eventConversation;
+    }
+    if (typeof meta.startTimestamp === "number"){
+      updates.startTimestamp = meta.startTimestamp;
+    }
+    if (meta.delegateId){
+      updates.delegateId = meta.delegateId;
+      updates.delegateName = meta.delegateName || meta.delegateId;
+    }
+    if (meta.delegated != null){
+      updates.delegated = meta.delegated;
+    }
+    if (Object.keys(updates).length){
+      await setRoomMeta(meta.token, updates);
+    }
+
+    if (typeof meta.startFromDt === "number"){
+      const shouldPersist = meta.startProp == null || Math.abs(meta.startFromDt - meta.startProp) >= 1;
+      if (shouldPersist){
+        await updateCalendarItemProps(item, { "X-NCTALK-START": String(Math.floor(meta.startFromDt)) });
+      }
+    }
+
+    const legacyMode = !meta.delegateReadyKnown;
+    if (meta.delegateId && meta.delegated !== true){
+      if (meta.delegateReady === true || legacyMode){
+        const result = await applyCalendarDelegation({
+          token: meta.token,
+          delegateId: meta.delegateId,
+          delegateName: meta.delegateName || meta.delegateId
+        });
+        if (result?.ok){
+          await updateCalendarItemProps(item, {
+            "X-NCTALK-DELEGATED": "TRUE",
+            "X-NCTALK-DELEGATE-READY": null
+          });
+        }
+      }
+    }
+  }catch(e){
+    console.error("[NCBG] calendar item upsert failed", e);
+  }
+}
+
+/**
+ * Handle calendar item deletion and remove the Talk room.
+ * @param {string} calendarId
+ * @param {string} id
+ * @returns {Promise<void>}
+ */
+async function handleCalendarItemRemoved(calendarId, id){
+  try{
+    const entry = getEventTokenEntry(calendarId, id);
+    if (!entry?.token){
+      return;
+    }
+    await deleteTalkRoom({ token: entry.token });
+    await deleteRoomMeta(entry.token);
+    await removeEventTokenEntry(calendarId, id);
+  }catch(e){
+    console.error("[NCBG] calendar item removed handler failed", e);
+  }
+}
+
+/**
+ * Register calendar experiment listeners for event lifecycle changes.
+ */
+function startCalendarMonitor(){
+  if (!browser?.calendar?.items?.onCreated){
+    console.warn("[NCBG] calendar experiment not available");
+    return;
+  }
+  browser.calendar.items.onCreated.addListener(handleCalendarItemUpsert, { returnFormat: "ical" });
+  browser.calendar.items.onUpdated.addListener(handleCalendarItemUpsert, { returnFormat: "ical" });
+  browser.calendar.items.onRemoved.addListener(handleCalendarItemRemoved);
+}
+
 browser.calToolbar.onCreateRequest.addListener(async (payload = {}) => {
   L("calToolbar.onCreateRequest", {
     title: payload?.title || "",
@@ -526,20 +1226,6 @@ browser.calToolbar.onCreateRequest.addListener(async (payload = {}) => {
     const out = await createTalkPublicRoom(payload);
     return { ok:true, url: out.url, token: out.token, fallback: !!out.fallback, reason: out.reason };
   } catch(e){
-    return { ok:false, error: e?.message || String(e) };
-  }
-});
-
-browser.calToolbar.onLobbyUpdate.addListener(async (payload = {}) => {
-  L("calToolbar.onLobbyUpdate", {
-    token: payload?.token ? shortToken(payload.token) : "",
-    enableLobby: !!payload?.enableLobby,
-    startTimestamp: payload?.startTimestamp || null
-  });
-  try{
-    await updateTalkLobby(payload);
-    return { ok:true };
-  }catch(e){
     return { ok:false, error: e?.message || String(e) };
   }
 });
@@ -586,94 +1272,7 @@ browser.calToolbar.onUtilityRequest.addListener(async (payload = {}) => {
       return { ok:true };
     },
     calendarUpdateLobby: async () => {
-      const token = payload?.token;
-      if (!token){
-        return { ok:false, error: bgI18n("error_room_token_missing") };
-      }
-      const meta = getRoomMeta(token) || {};
-      const { user: currentUserRaw } = await NCCore.getOpts();
-      const delegateIdRaw = (payload?.delegateId ?? meta.delegateId ?? "").trim();
-      const delegateTarget = delegateIdRaw.toLowerCase();
-      const currentUser = (currentUserRaw || "").trim().toLowerCase();
-      const delegated = payload?.delegated === true || meta.delegated === true;
-      const incomingStart = typeof payload?.startTimestamp === "number" ? payload.startTimestamp : null;
-      const metaStart = typeof meta.startTimestamp === "number" ? meta.startTimestamp : null;
-
-      if (DEBUG_ENABLED){
-        L("calendar lobby update payload", {
-          token: shortToken(token),
-          delegate: delegateTarget ? shortId(delegateTarget, 20) : "",
-          delegated,
-          startTimestamp: incomingStart,
-          metaStart
-        });
-      }
-
-      if (delegateTarget && currentUser && delegateTarget !== currentUser){
-        if (delegated){
-          L("calendar lobby update skipped (delegate mismatch)", {
-            token: shortToken(token),
-            delegate: delegateIdRaw || meta.delegateId || "",
-            currentUser: currentUserRaw || ""
-          });
-          return { ok:false, skipped:true, reason:"delegateMismatch" };
-        }
-        L("calendar lobby update by owner before delegation", {
-          token: shortToken(token),
-          delegate: delegateIdRaw || meta.delegateId || "",
-          currentUser: currentUserRaw || ""
-        });
-      }
-
-      if (meta.lobbyEnabled === false){
-        return { ok:false, skipped:true, reason:"lobbyDisabled" };
-      }
-
-      const startTs = incomingStart ?? metaStart;
-      if (typeof startTs !== "number"){
-        return { ok:false, error: bgI18n("error_unknown_utility_request") };
-      }
-      if (metaStart === startTs){
-        L("calendar lobby update skipped (unchanged start)", {
-          token: shortToken(token),
-          startTimestamp: startTs
-        });
-        return { ok:true, skipped:true, reason:"startUnchanged" };
-      }
-
-      L("calendar lobby update apply", { token: shortToken(token), startTimestamp: startTs });
-      await updateTalkLobby({
-        token,
-        enableLobby: true,
-        startTimestamp: startTs
-      });
-      await setRoomMeta(token, {
-        lobbyEnabled: true,
-        startTimestamp: startTs
-      });
-      L("calendar lobby update success", { token: shortToken(token), startTimestamp: startTs });
-      return { ok:true };
-    },
-    calendarDelegateModerator: async () => {
-      const token = payload?.token;
-      const delegateId = payload?.delegateId;
-      if (!token || !delegateId){
-        return { ok:false, error: bgI18n("error_delegation_data_missing") };
-      }
-      const { user } = await NCCore.getOpts();
-      const targetNorm = String(delegateId).trim().toLowerCase();
-      const currentNorm = (user || "").trim().toLowerCase();
-      if (targetNorm === currentNorm){
-        L("calendar delegation skipped (same user)", { token: shortToken(token), delegate: delegateId });
-        return { ok:false, skipped:true, reason:"sameUser" };
-      }
-      const result = await delegateRoomModerator({ token, newModerator: delegateId });
-      await setRoomMeta(token, {
-        delegated: true,
-        delegateId,
-        delegateName: payload?.delegateName || delegateId
-      });
-      return { ok:true, result };
+      return await applyCalendarLobbyUpdate(payload);
     },
     getConfig: async () => {
       const config = await NCCore.getOpts();
@@ -738,6 +1337,7 @@ browser.calToolbar.onUtilityRequest.addListener(async (payload = {}) => {
   try{
     const defaultLabel = bgI18n("ui_insert_button_label");
     const defaultTooltip = bgI18n("ui_toolbar_tooltip");
+    startCalendarMonitor();
     const ok = await browser.calToolbar.init({ label: defaultLabel, tooltip: defaultTooltip });
     if (!ok){
       console.warn("[NCBG] experiment init returned falsy value");

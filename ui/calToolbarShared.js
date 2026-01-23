@@ -28,10 +28,20 @@
   const TALK_PROP_DELEGATED = "X-NCTALK-DELEGATED";
   const TALK_PROP_DELEGATE_READY = "X-NCTALK-DELEGATE-READY";
 
+  /**
+   * Normalize a string value, returning null for empty strings.
+   * @param {any} value
+   * @returns {string|null}
+   */
   function safeString(value){
     return typeof value === "string" && value.length ? value : null;
   }
 
+  /**
+   * Parse boolean-like values from calendar properties.
+   * @param {any} value
+   * @returns {boolean|null}
+   */
   function parseBooleanProp(value){
     if (typeof value === "boolean") return value;
     if (typeof value === "string"){
@@ -42,6 +52,11 @@
     return null;
   }
 
+  /**
+   * Parse integer-like values from calendar properties.
+   * @param {any} value
+   * @returns {number|null}
+   */
   function parseNumberProp(value){
     if (typeof value === "number" && Number.isFinite(value)){
       return value;
@@ -55,6 +70,11 @@
     return null;
   }
 
+  /**
+   * Convert a boolean value to a calendar property string.
+   * @param {any} value
+   * @returns {string}
+   */
   function boolToProp(value){
     if (typeof value === "string"){
       const norm = value.trim().toLowerCase();
@@ -64,6 +84,11 @@
     return value ? "TRUE" : "FALSE";
   }
 
+  /**
+   * Locate the calendar item from a dialog document.
+   * @param {Document} doc
+   * @returns {object|null}
+   */
   function getCalendarItem(doc){
     try{
       const win = doc?.defaultView || globalScope;
@@ -78,6 +103,11 @@
     return null;
   }
 
+  /**
+   * Resolve a document from a window or document target.
+   * @param {Window|Document} target
+   * @returns {Document|null}
+   */
   function resolveDocument(target){
     if (!target) return null;
     if (target.document) return target.document;
@@ -86,10 +116,19 @@
     return null;
   }
 
+  /**
+   * Collect documents for the dialog and its iframe (if present).
+   * @param {Window|Document} target
+   * @returns {Document[]}
+   */
   function collectEventDocs(target){
     const docs = [];
     const doc = resolveDocument(target);
     if (!doc) return docs;
+    /**
+     * Push a document if it is not already in the list.
+     * @param {Document} entry
+     */
     const pushDoc = (entry) => {
       if (entry && docs.indexOf(entry) === -1){
         docs.push(entry);
@@ -107,6 +146,12 @@
     return docs;
   }
 
+  /**
+   * Find a field element across multiple documents.
+   * @param {Document[]} docs
+   * @param {string[]} selectors
+   * @returns {Element|null}
+   */
   function findField(docs, selectors){
     for (const doc of docs){
       if (!doc || typeof doc.querySelector !== "function") continue;
@@ -154,6 +199,10 @@
     return null;
   }
 
+  /**
+   * Dispatch an input event on an edited field.
+   * @param {Element} field
+   */
   function dispatchInputEvent(field){
     if (!field) return;
     try{
@@ -166,11 +215,21 @@
     }catch(_){}
   }
 
+  /**
+   * Set the value of a field using editor-aware fallbacks.
+   * @param {Element} field
+   * @param {string} value
+   * @param {object} opts
+   */
   function setFieldValue(field, value, opts = {}){
     if (!field) return;
     const doc = field.ownerDocument || field.document || field.contentDocument || null;
     const execPreferred = opts.preferExec === true;
 
+    /**
+     * Attempt an execCommand-based update for rich editors.
+     * @returns {boolean}
+     */
     const tryExecCommand = () => {
       if (!doc || typeof doc.execCommand !== "function"){
         return false;
@@ -208,6 +267,11 @@
     }
   }
 
+  /**
+   * Read the current value from a field.
+   * @param {Element} field
+   * @returns {string}
+   */
   function getFieldValue(field){
     if (!field) return "";
     if ("value" in field){
@@ -230,6 +294,11 @@
       if (!item || typeof item.getProperty !== "function"){
         return {};
       }
+      /**
+       * Read a string property from the calendar item.
+       * @param {string} name
+       * @returns {string|null}
+       */
       const get = (name) => {
         try{
           return safeString(item.getProperty(name));
@@ -280,6 +349,11 @@
     if (!item || typeof item.setProperty !== "function"){
       return { ok:false, error:"no_calendar_item" };
     }
+    /**
+     * Set or clear a calendar item property.
+     * @param {string} name
+     * @param {any} value
+     */
     const setProp = (name, value) => {
       try{
         if (value == null || value === ""){
@@ -320,6 +394,12 @@
     return { ok:true };
   }
 
+  /**
+   * Convenience wrapper to set Talk metadata on a document or window.
+   * @param {Window|Document} target
+   * @param {object} payload
+   * @returns {{ok:boolean,error?:string}}
+   */
   function setTalkMetadataOnWindow(target, payload = {}){
     const doc = resolveDocument(target);
     if (!doc){

@@ -52,6 +52,10 @@
 
   document.addEventListener('DOMContentLoaded', init);
 
+  /**
+   * Initialize the sharing wizard UI and state.
+   * @returns {Promise<void>}
+   */
   async function init(){
     cacheElements();
     NCTalkDomI18n.translatePage(i18n, { titleKey: "sharing_dialog_title" });
@@ -81,6 +85,9 @@
     log('Wizard initialisiert', { tabId: state.tabId });
   }
 
+  /**
+   * Cache DOM elements used by the wizard.
+   */
   function cacheElements(){
     dom.steps = Array.from(document.querySelectorAll('.wizard-step'));
     dom.shareName = document.getElementById('shareName');
@@ -116,6 +123,10 @@
     dom.cancelBtn = document.getElementById('cancelBtn');
   }
 
+  /**
+   * Parse the compose tab id from the query string.
+   * @returns {number|null}
+   */
   function parseTabId(){
     const params = new URLSearchParams(window.location.search);
     const raw = params.get('tabId');
@@ -124,6 +135,9 @@
     return Number.isFinite(parsed) ? parsed : null;
   }
 
+  /**
+   * Attach UI event handlers for the wizard.
+   */
   function attachEvents(){
     dom.shareName.addEventListener('input', () => {
       resetShareContext();
@@ -191,6 +205,10 @@
     log('Event-Handler registriert');
   }
 
+  /**
+   * Load the default base path for sharing.
+   * @returns {Promise<void>}
+   */
   async function loadBasePath(){
     try{
       const basePath = await (NCSharing.getFileLinkBasePath?.() || Promise.resolve(NCSharing.DEFAULT_BASE_PATH || ''));
@@ -209,6 +227,10 @@
     }
   }
 
+  /**
+   * Load the debug flag from storage.
+   * @returns {Promise<void>}
+   */
   function loadDebugFlag(){
     if (!browser?.storage?.local){
       state.debugEnabled = false;
@@ -225,6 +247,11 @@
       });
   }
 
+  /**
+   * Handle storage changes and update the UI state.
+   * @param {object} changes
+   * @param {string} area
+   */
   function handleStorageChange(changes, area){
     if (area !== 'local') return;
     if (Object.prototype.hasOwnProperty.call(changes, 'debugEnabled')){
@@ -243,6 +270,10 @@
     }
   }
 
+  /**
+   * Load default settings from storage into state.
+   * @returns {Promise<void>}
+   */
   async function loadDefaultSettings(){
     state.defaults.shareName = getDefaultShareName();
     state.defaults.permCreate = false;
@@ -285,12 +316,18 @@
       DEFAULT_EXPIRE_DAYS
     );
   }
+  /**
+   * Apply the default share name to the input if empty.
+   */
   function setDefaultShareName(){
     if (!dom.shareName.value){
       dom.shareName.value = state.defaults.shareName || getDefaultShareName();
     }
   }
 
+  /**
+   * Apply default permission and password/expire settings to the UI.
+   */
   function applyDefaultSecuritySettings(){
     dom.permCreate.checked = !!state.defaults.permCreate;
     dom.permWrite.checked = !!state.defaults.permWrite;
@@ -309,6 +346,10 @@
     dom.expireDate.value = getDefaultExpireDate();
   }
 
+  /**
+   * Switch the wizard to the given step.
+   * @param {number} target
+   */
   function updateStep(target){
     state.currentStep = Math.max(1, Math.min(TOTAL_STEPS, target));
     dom.steps.forEach((section) => {
@@ -323,6 +364,9 @@
     updateButtons();
   }
 
+  /**
+   * Update navigation and action button states.
+   */
   function updateButtons(){
     dom.backBtn.disabled = state.currentStep === 1 || state.uploadInProgress;
     dom.nextBtn.style.visibility = state.currentStep >= TOTAL_STEPS ? 'hidden' : 'visible';
@@ -336,6 +380,10 @@
     dom.removeFileBtn.disabled = !state.selectedFileId || state.uploadInProgress;
   }
 
+  /**
+   * Handle the Next button and advance the wizard.
+   * @returns {Promise<void>}
+   */
   async function handleNext(){
     if (state.uploadInProgress){
       return;
@@ -364,6 +412,10 @@
     }
   }
 
+  /**
+   * Verify that the share folder name is available.
+   * @returns {Promise<boolean>}
+   */
   async function ensureShareNameAvailable(){
     const shareName = getSanitizedShareName();
     if (!shareName){
@@ -396,6 +448,11 @@
     }
   }
 
+  /**
+   * Handle file or folder input selections.
+   * @param {Event} event
+   * @param {string} source
+   */
   function handleFileSelection(event, source){
     const files = Array.from(event.target.files || []);
     if (!files.length){
@@ -427,6 +484,9 @@
     invalidateUpload();
   }
 
+  /**
+   * Remove the currently selected file entry.
+   */
   function removeSelectedEntry(){
     if (!state.selectedFileId || state.uploadInProgress){
       return;
@@ -438,6 +498,9 @@
     log('Eintrag entfernt', removed?.displayPath || '');
   }
 
+  /**
+   * Render the current file list table.
+   */
   function renderFileTable(){
     dom.fileTableBody.innerHTML = '';
     if (!state.files.length){
@@ -469,6 +532,10 @@
     ensureUploadListVisible();
   }
 
+  /**
+   * Ensure the upload list scroll position matches the target.
+   * @param {{targetId?:string,force?:boolean}} options
+   */
   function ensureUploadListVisible({ targetId = null, force = false } = {}){
     if (!dom.fileTableWrapper){
       return;
@@ -483,6 +550,9 @@
     const wrapper = dom.fileTableWrapper;
     const tableBody = dom.fileTableBody;
     pendingUploadScroll = null;
+    /**
+     * Perform the actual scroll adjustment.
+     */
     const scrollTask = () => {
       if (desiredTarget === '__top__'){
         wrapper.scrollTop = 0;
@@ -504,6 +574,11 @@
     }
   }
 
+  /**
+   * Build the status cell markup for a file entry.
+   * @param {object} entry
+   * @returns {string}
+   */
   function buildStatusMarkup(entry){
     if (entry.status === 'uploading'){
       const percent = entry.progress || 0;
@@ -518,6 +593,9 @@
     return `<span>${i18n('sharing_status_waiting')}</span>`;
   }
 
+  /**
+   * Reset upload state after changing inputs.
+   */
   function invalidateUpload(){
     state.uploadCompleted = false;
     state.uploadResult = null;
@@ -531,6 +609,11 @@
     updateButtons();
   }
 
+  /**
+   * Start uploading files and creating the share.
+   * @param {{allowEmpty?:boolean}} options
+   * @returns {Promise<void>}
+   */
   async function startUpload({ allowEmpty = false } = {}){
     if (state.uploadInProgress){
       return;
@@ -621,6 +704,10 @@
     }
   }
 
+  /**
+   * Update UI state for upload progress callbacks.
+   * @param {object} event
+   */
   function handleUploadStatus(event){
     if (!event || !event.itemId){
       return;
@@ -650,6 +737,10 @@
     renderFileTable();
   }
 
+  /**
+   * Finalize the share and insert the HTML block.
+   * @returns {Promise<void>}
+   */
   async function finalizeShare(){
     if (!state.uploadCompleted || !state.uploadResult?.shareInfo){
       setMessage(i18n('sharing_error_upload_required'), 'error');
@@ -683,6 +774,10 @@
     }
   }
 
+  /**
+   * Collect permission flags from the UI.
+   * @returns {{read:boolean,create:boolean,write:boolean,delete:boolean}}
+   */
   function getPermissions(){
     return {
       read: true,
@@ -692,6 +787,10 @@
     };
   }
 
+  /**
+   * Ensure selected files are unique within the queue.
+   * @returns {Promise<boolean>}
+   */
   async function ensureUniqueQueueEntries(){
     const seen = new Set();
     for (const entry of state.files){
@@ -709,6 +808,10 @@
     return true;
   }
 
+  /**
+   * Ensure selected files do not collide with remote paths.
+   * @returns {Promise<boolean>}
+   */
   async function ensureRemoteUniqueness(){
     const shareContext = getShareContext();
     if (!shareContext){
@@ -729,12 +832,21 @@
     return true;
   }
 
+  /**
+   * Build a sanitized target path for a file entry.
+   * @param {object} entry
+   * @returns {string}
+   */
   function getTargetRelativePath(entry){
     const sanitizedName = NCSharing.sanitizeFileName(entry.renamedName || entry.file?.name || 'Datei');
     const sanitizedDir = NCSharing.sanitizeRelativeDir(entry.relativeDir || '');
     return sanitizedDir ? `${sanitizedDir}/${sanitizedName}` : sanitizedName;
   }
 
+  /**
+   * Validate the password against policy when enabled.
+   * @returns {boolean}
+   */
   function validatePasswordIfNeeded(){
     if (!dom.passwordToggle.checked){
       return true;
@@ -747,27 +859,49 @@
     return true;
   }
 
+  /**
+   * Determine if upload can be skipped (create-only share).
+   * @returns {boolean}
+   */
   function canSkipUpload(){
     return !!dom.permCreate?.checked && state.files.length === 0;
   }
 
+  /**
+   * Confirm that the user wants to proceed without uploads.
+   * @returns {boolean}
+   */
   function confirmNoFileUpload(){
     const title = i18n('sharing_confirm_no_files_title') || 'Freigabe ohne Upload';
     const body = i18n('sharing_confirm_no_files_message') || 'Es wurden keine Dateien hinzugefügt. Der Empfänger kann nur eigene Dateien hochladen. Fortfahren?';
     return window.confirm(`${title}\n\n${body}`);
   }
 
+  /**
+   * Show a message in the wizard UI.
+   * @param {string} text
+   * @param {string} type
+   */
   function setMessage(text, type = ''){
     dom.messageBar.textContent = text || '';
     dom.messageBar.className = `dialog-message ${type || ''}`.trim();
     log('Message', { text, type });
   }
 
+  /**
+   * Update the upload status line.
+   * @param {string} text
+   */
   function setUploadStatus(text){
     dom.uploadStatus.textContent = text || '';
     log('Status', text);
   }
 
+  /**
+   * Insert the generated HTML block into the compose window.
+   * @param {string} html
+   * @returns {Promise<void>}
+   */
   async function insertIntoCompose(html){
     const tabId = state.tabId;
     if (!tabId){
@@ -782,12 +916,22 @@
     }
   }
 
+  /**
+   * Handle cancel and clean up any temporary server state.
+   * @param {Event} event
+   * @returns {Promise<void>}
+   */
   async function handleCancel(event){
     event?.preventDefault?.();
     await cleanupRemoteFolder('cancel');
     window.close();
   }
 
+  /**
+   * Remove the remote folder if it was created during this wizard run.
+   * @param {string} reason
+   * @returns {Promise<void>}
+   */
   async function cleanupRemoteFolder(reason = ''){
     if (!state.remoteFolderCreated || !state.remoteFolderInfo){
       return;
@@ -806,10 +950,18 @@
     }
   }
 
+  /**
+   * Read the raw share name from the input.
+   * @returns {string}
+   */
   function getRawShareName(){
     return (dom.shareName?.value || '').trim();
   }
 
+  /**
+   * Return the sanitized share name and update share context.
+   * @returns {string}
+   */
   function getSanitizedShareName(){
     const raw = getRawShareName();
     if (!raw){
@@ -826,6 +978,10 @@
     return sanitized;
   }
 
+  /**
+   * Build or return the cached share context for this run.
+   * @returns {object|null}
+   */
   function getShareContext(){
     const shareName = getSanitizedShareName();
     if (!shareName){
@@ -838,6 +994,10 @@
     return state.shareContext;
   }
 
+  /**
+   * Compute the default expire date as YYYY-MM-DD.
+   * @returns {string}
+   */
   function getDefaultExpireDate(){
     const days = NCTalkTextUtils.normalizeExpireDays(state.defaults.expireDays, DEFAULT_EXPIRE_DAYS);
     const base = new Date();
@@ -845,10 +1005,19 @@
     return base.toISOString().slice(0, 10);
   }
 
+  /**
+   * Resolve the default share name label.
+   * @returns {string}
+   */
   function getDefaultShareName(){
     return i18n('sharing_share_default') || 'Freigabename';
   }
 
+  /**
+   * Join path segments and trim slashes.
+   * @param {...string} segments
+   * @returns {string}
+   */
   function joinRelative(...segments){
     return segments
       .map((segment) => String(segment || '').replace(/^[\\/]+|[\\/]+$/g, ''))
@@ -856,6 +1025,9 @@
       .join('/');
   }
 
+  /**
+   * Send a debug log message when enabled.
+   */
   function log(){
     if (!state.debugEnabled){
       return;
@@ -864,6 +1036,10 @@
     forwardDebugLog(args);
   }
 
+  /**
+   * Forward a debug log payload to the background.
+   * @param {any[]} args
+   */
   function forwardDebugLog(args){
     if (!browser?.runtime?.sendMessage){
       return;
@@ -886,6 +1062,11 @@
     }catch(_){}
   }
 
+  /**
+   * Format a log argument for transport.
+   * @param {any} value
+   * @returns {string}
+   */
   function formatLogArg(value){
     if (value == null){
       return String(value);
@@ -905,6 +1086,10 @@
       return Object.prototype.toString.call(value);
     }
   }
+  /**
+   * Create a fresh share context snapshot.
+   * @returns {{sanitizedName:string,folderInfo:object|null,shareDate:Date,verified:boolean}}
+   */
   function createShareContext(){
     return {
       sanitizedName: '',
@@ -914,10 +1099,18 @@
     };
   }
 
+  /**
+   * Reset the current share context.
+   */
   function resetShareContext(){
     state.shareContext = createShareContext();
   }
 
+  /**
+   * Store the verified share folder info in state.
+   * @param {object} folderInfo
+   * @param {string} shareName
+   */
   function rememberShareFolder(folderInfo, shareName){
     state.shareContext.folderInfo = folderInfo || null;
     if (folderInfo?.date instanceof Date){
@@ -929,12 +1122,21 @@
     state.shareContext.verified = !!state.shareContext.folderInfo && !!state.shareContext.sanitizedName;
   }
 
+  /**
+   * Reset upload status for a file entry.
+   * @param {object} entry
+   */
   function resetFileEntry(entry){
     entry.status = 'pending';
     entry.progress = 0;
     entry.error = '';
   }
 
+  /**
+   * Apply a rename to the file entry display path.
+   * @param {object} entry
+   * @param {string} newName
+   */
   function applyEntryRename(entry, newName){
     const clean = (newName || '').trim();
     if (!clean){
@@ -943,6 +1145,12 @@
     entry.renamedName = clean;
     entry.displayPath = entry.relativeDir ? `${entry.relativeDir}/${clean}` : clean;
   }
+  /**
+   * Prompt the user to rename an entry to avoid collisions.
+   * @param {object} entry
+   * @param {string} messageKey
+   * @returns {boolean}
+   */
   function promptForRename(entry, messageKey){
     const suggestion = entry.renamedName || entry.file?.name || '';
     const renamed = prompt(i18n(messageKey, [entry.displayPath]), suggestion);
@@ -953,6 +1161,9 @@
     applyEntryRename(entry, renamed);
     return true;
   }
+  /**
+   * Setup popup resizing based on content height.
+   */
   function setupWindowSizing(){
     if (!popupSizer){
       return;
@@ -966,6 +1177,10 @@
     }
   }
 
+  /**
+   * Return the desired content height for popup sizing.
+   * @returns {number}
+   */
   function getContentHeight(){
     return POPUP_CONTENT_HEIGHT;
   }

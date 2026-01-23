@@ -11,6 +11,11 @@
     ensureOriginPermissionInteractive
   };
 
+  /**
+   * Normalize a user-provided base URL into an origin pattern for optional permissions.
+   * @param {string} baseUrl
+   * @returns {string} Origin pattern like "https://cloud.example.com/*" or empty string.
+   */
   function normalizeOriginPattern(baseUrl){
     if (!baseUrl) return "";
     try{
@@ -24,6 +29,11 @@
     }
   }
 
+  /**
+   * Check if the extension already has host permission for the given base URL.
+   * @param {string} baseUrl
+   * @returns {Promise<boolean>}
+   */
   async function hasOriginPermission(baseUrl){
     const pattern = normalizeOriginPattern(baseUrl);
     if (!pattern){
@@ -39,6 +49,12 @@
     }
   }
 
+  /**
+   * Request optional host permission for the given base URL (interactive by default).
+   * @param {string} baseUrl
+   * @param {{prompt?:boolean}} options
+   * @returns {Promise<boolean>}
+   */
   async function ensureOriginPermissionInteractive(baseUrl, options = {}){
     const pattern = normalizeOriginPattern(baseUrl);
     if (!pattern){

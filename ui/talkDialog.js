@@ -42,6 +42,13 @@
   const okBtn = document.getElementById("okBtn");
   const cancelBtn = document.getElementById("cancelBtn");
 
+  /**
+   * Translate a key with optional fallback/substitutions.
+   * @param {string} key
+   * @param {string|Array|object} fallbackOrSubstitutions
+   * @param {Array|object} substitutions
+   * @returns {string}
+   */
   const t = (key, fallbackOrSubstitutions = "", substitutions = undefined) => {
     let fallback = fallbackOrSubstitutions;
     let subs = substitutions;
@@ -104,6 +111,9 @@
     }
   }
 
+  /**
+   * Attach UI event handlers for the dialog.
+   */
   function bindEvents(){
     okBtn?.addEventListener("click", handleOk);
     cancelBtn?.addEventListener("click", () => {
@@ -115,6 +125,10 @@
     initDelegateField();
   }
 
+  /**
+   * Initialize the dialog by fetching event data.
+   * @returns {Promise<void>}
+   */
   async function init(){
     try{
       const check = await browser.runtime.sendMessage({
@@ -130,6 +144,10 @@
     }
   }
 
+  /**
+   * Load stored Talk defaults from local storage.
+   * @returns {Promise<{title:string,lobby:boolean,listable:boolean,roomType:string}>}
+   */
   async function loadTalkDefaults(){
     const defaults = {
       title: t("ui_default_title"),
@@ -168,6 +186,10 @@
     return defaults;
   }
 
+  /**
+   * Load the current event snapshot and populate the UI.
+   * @returns {Promise<void>}
+   */
   async function loadSnapshot(){
     try{
       const response = await browser.runtime.sendMessage({
@@ -200,6 +222,10 @@
     }
   }
 
+  /**
+   * Handle the OK button and create/update the Talk room.
+   * @returns {Promise<void>}
+   */
   async function handleOk(){
     if (state.busy){
       return;
@@ -241,6 +267,10 @@
     }
   }
 
+  /**
+   * Build the payload for the create-room request.
+   * @returns {object}
+   */
   function buildCreatePayload(){
     const startTimestamp = ensureUnixSeconds(state.event?.startTimestamp || state.metadata?.startTimestamp);
     const endTimestamp = ensureUnixSeconds(state.event?.endTimestamp || state.metadata?.endTimestamp || state.event?.startTimestamp);
@@ -267,6 +297,9 @@
     };
   }
 
+  /**
+   * Generate and insert a new password into the input.
+   */
   function handlePasswordGenerate(){
     if (!passwordInput || state.busy){
       return;
@@ -279,6 +312,12 @@
     passwordInput.focus();
   }
 
+  /**
+   * Apply the create result to calendar metadata and description.
+   * @param {object} payload
+   * @param {object} result
+   * @returns {Promise<void>}
+   */
   async function applyCreateResult(payload, result){
     if (!result?.token || !result?.url){
       throw new Error(t("ui_create_failed", [t("talk_error_create_missing_data")]));
@@ -343,6 +382,12 @@
     });
   }
 
+  /**
+   * Handle delegation flow after room creation.
+   * @param {object} result
+   * @param {object} payload
+   * @returns {Promise<{delegated:boolean}>}
+   */
   async function handleDelegationAfterCreate(result, payload){
     if (!payload.delegateId){
       return { delegated: false };
@@ -364,6 +409,10 @@
     return { delegated: false };
   }
 
+  /**
+   * Validate password input and show errors if needed.
+   * @returns {Promise<boolean>}
+   */
   async function ensureValidPassword(){
     if (!passwordInput){
       return true;
@@ -393,6 +442,11 @@
     return false;
   }
 
+  /**
+   * Normalize a timestamp to unix seconds.
+   * @param {number} value
+   * @returns {number|null}
+   */
   function ensureUnixSeconds(value){
     if (typeof value === "number" && Number.isFinite(value)){
       return value > 1e12 ? Math.floor(value / 1000) : Math.floor(value);
@@ -400,6 +454,12 @@
     return null;
   }
 
+  /**
+   * Build the event object metadata for Talk rooms.
+   * @param {number|null} startTs
+   * @param {number|null} endTs
+   * @returns {{objectType:string,objectId:string}}
+   */
   function buildEventObjectMetadata(startTs, endTs){
     if (state.metadata?.objectId){
       return { objectType: "event", objectId: state.metadata.objectId };
@@ -417,6 +477,11 @@
     return { objectType: "event", objectId: `tb-${hashStringToHex(seed)}` };
   }
 
+  /**
+   * Hash a string into a short hex identifier.
+   * @param {string} value
+   * @returns {string}
+   */
   function hashStringToHex(value){
     const input = String(value ?? "");
     let hash = 0;
@@ -427,6 +492,13 @@
     return (hash >>> 0).toString(16).padStart(8, "0");
   }
 
+  /**
+   * Compose the event description with Talk details.
+   * @param {string} baseText
+   * @param {string} url
+   * @param {string} password
+   * @returns {Promise<string>}
+   */
   async function composeDescription(baseText, url, password){
     const parts = [];
     const clean = (baseText || "").trim();
@@ -444,6 +516,9 @@
     return parts.join("\n\n").trim();
   }
 
+  /**
+   * Initialize the delegate selection field interactions.
+   */
   function initDelegateField(){
     if (!delegateInput){
       return;
@@ -485,6 +560,10 @@
     scheduleDelegateSearch("");
   }
 
+  /**
+   * Populate delegate UI fields from stored metadata.
+   * @param {object} meta
+   */
   function hydrateDelegateFromMetadata(meta){
     if (!delegateInput){
       return;
@@ -508,6 +587,11 @@
     updateDelegateStatus("");
   }
 
+  /**
+   * Update the delegate status hint line.
+   * @param {string} text
+   * @param {boolean} isError
+   */
   function updateDelegateStatus(text = "", isError = false){
     if (!delegateStatus){
       return;
@@ -516,6 +600,10 @@
     delegateStatus.style.color = isError ? "#b00020" : "#5a5a5a";
   }
 
+  /**
+   * Debounce delegate search requests.
+   * @param {string} term
+   */
   function scheduleDelegateSearch(term){
     if (!delegateInput){
       return;
@@ -526,6 +614,11 @@
     state.delegate.searchTimer = window.setTimeout(() => performDelegateSearch(term), 250);
   }
 
+  /**
+   * Search for delegates and render suggestions.
+   * @param {string} term
+   * @returns {Promise<void>}
+   */
   async function performDelegateSearch(term){
     if (!delegateInput){
       return;
@@ -600,6 +693,9 @@
     }
   }
 
+  /**
+   * Render the delegate suggestions dropdown.
+   */
   function renderDelegateDropdown(){
     if (!delegateDropdown || !delegateInput){
       return;
@@ -658,6 +754,9 @@
     updateDelegateRowHighlight();
   }
 
+  /**
+   * Update the active highlight row in the dropdown.
+   */
   function updateDelegateRowHighlight(){
     if (!delegateDropdown){
       return;
@@ -673,6 +772,10 @@
     });
   }
 
+  /**
+   * Hide the delegate dropdown menu.
+   * @param {boolean} resetActive
+   */
   function hideDelegateDropdown(resetActive){
     if (!delegateDropdown){
       return;
@@ -684,6 +787,10 @@
     }
   }
 
+  /**
+   * Handle keyboard navigation for delegate suggestions.
+   * @param {KeyboardEvent} event
+   */
   function handleDelegateKeyDown(event){
     if (!state.delegate.visible || !state.delegate.suggestions.length){
       return;
@@ -708,6 +815,10 @@
     }
   }
 
+  /**
+   * Select a delegate suggestion by index.
+   * @param {number} index
+   */
   function selectDelegateSuggestion(index){
     const suggestion = state.delegate.suggestions[index];
     if (!suggestion || !delegateInput){
@@ -730,6 +841,12 @@
     }catch(_){ }
   }
 
+  /**
+   * Build a display label for a delegate entry.
+   * @param {string} label
+   * @param {string} email
+   * @returns {string}
+   */
   function formatDelegateDisplay(label, email){
     if (label && email && label !== email){
       return `${label} <${email}>`;
@@ -737,6 +854,11 @@
     return label || email || "";
   }
 
+  /**
+   * Compute initials for a label.
+   * @param {string} source
+   * @returns {string}
+   */
   function computeInitials(source){
     const text = (source || "").trim();
     if (!text){
@@ -749,6 +871,11 @@
     return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
   }
 
+  /**
+   * Normalize a delegate label for display.
+   * @param {string} value
+   * @returns {string}
+   */
   function normalizeDelegateLabel(value){
     if (typeof value === "string"){
       const trimmed = value.trim();
@@ -763,10 +890,19 @@
     return "";
   }
 
+  /**
+   * Store the current delegate label for alerts.
+   * @param {string} value
+   */
   function setDelegateAlertLabel(value){
     state.delegate.alertLabel = normalizeDelegateLabel(value) || "";
   }
 
+  /**
+   * Resolve a label for delegation alert dialogs.
+   * @param {object} payload
+   * @returns {string}
+   */
   function getDelegateAlertLabel(payload){
     const fallback = t("ui_delegate_selected_title");
     const candidates = [
@@ -787,6 +923,9 @@
     return fallback;
   }
 
+  /**
+   * Update the selected delegate preview card.
+   */
   function updateDelegateSelectedDisplay(){
     if (!delegateSelected || !delegateAvatarImg || !delegateAvatarInitials || !delegateSelectedName || !delegateSelectedMeta){
       return;
@@ -827,6 +966,10 @@
     }
   }
 
+  /**
+   * Build a preview object for the current delegate selection.
+   * @returns {object|null}
+   */
   function getDelegateSelectionPreview(){
     if (state.delegate.selected){
       return state.delegate.selected;
@@ -848,6 +991,12 @@
     };
   }
 
+  /**
+   * Show a delegate notice dialog.
+   * @param {string} message
+   * @param {string} variant
+   * @returns {Promise<string>}
+   */
   function showDelegateNotice(message, variant = "info"){
     if (!message){
       return Promise.resolve();
@@ -864,6 +1013,11 @@
     });
   }
 
+  /**
+   * Show an inline modal dialog and resolve when closed.
+   * @param {{title:string,message:string,variant?:string,buttons?:Array}} options
+   * @returns {Promise<string>}
+   */
   function showInlineModal({ title, message, variant = "info", buttons }){
     const finalButtons = Array.isArray(buttons) && buttons.length
       ? buttons
@@ -893,6 +1047,10 @@
           existing.remove();
         }
         const previousActive = document.activeElement;
+        /**
+         * Tear down the modal and resolve with a result.
+         * @param {string} result
+         */
         const cleanup = (result) => {
           overlay.removeEventListener("keydown", keyHandler, true);
           overlay.removeEventListener("click", overlayHandler);
@@ -904,6 +1062,10 @@
           }
           resolve(result);
         };
+        /**
+         * Handle keyboard shortcuts for the modal.
+         * @param {KeyboardEvent} event
+         */
         const keyHandler = (event) => {
           if (event.key === "Escape"){
             event.preventDefault();
@@ -916,6 +1078,10 @@
             }
           }
         };
+        /**
+         * Close modal when clicking outside the dialog.
+         * @param {MouseEvent} event
+         */
         const overlayHandler = (event) => {
           if (event.target === overlay){
             cleanup("dismiss");
@@ -960,6 +1126,10 @@
     });
   }
 
+  /**
+   * Measure dialog content height for popup sizing.
+   * @returns {number}
+   */
   function getContentHeight(){
     try{
       const rect = dialogRoot?.getBoundingClientRect?.();
@@ -974,6 +1144,11 @@
     return Math.max(MIN_CONTENT_HEIGHT, fallback);
   }
 
+  /**
+   * Show a status message in the dialog.
+   * @param {string} text
+   * @param {boolean} isError
+   */
   function setMessage(text, isError){
     if (!messageBar){
       return;
@@ -982,6 +1157,11 @@
     messageBar.style.color = isError ? "#b00020" : "#1f1f1f";
   }
 
+  /**
+   * Send a debug log to the console and background.
+   * @param {string} label
+   * @param {any} data
+   */
   function logDebug(label, data){
     const details = data || "";
     try{

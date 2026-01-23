@@ -17,14 +17,14 @@ Nextcloud Enterprise for Thunderbird connects Thunderbird directly with Nextclou
 - **ESR-ready**
   Optimized and tested for Thunderbird ESR 140.X with a minimal experiment footprint.
 
-## Whats new in 2.2.2?
+## Whats new in 2.2.3?
 
 - New branding: Nextcloud Enterprise for Thunderbird.
 - Sharing wizard (renamed, explicitly separate from cloudFile).
 - Optional host permissions per instance + Talk dialog i18n fix.
 - New default options for Sharing and Talk (share name, permissions, password/expiry days, Talk title/lobby/listing/room type).
 - Advanced language overrides for the sharing HTML block and Talk text block (default/en/de/fr).
-- Note: The add-on ID has changed. Please uninstall the previously installed version before installing 2.2.2.
+- Note: The add-on ID has changed. Please uninstall versions <=2.2.1 before installing 2.2.3.
 
 ## Feature overview
 
@@ -49,7 +49,7 @@ Nextcloud Enterprise for Thunderbird connects Thunderbird directly with Nextclou
 - App password or Login Flow V2
 
 ## Installation
-1. Install the current XPI `nextcloud-enterprise-2.2.2.xpi` in Thunderbird (Add-ons > Gear > Install Add-on From File).
+1. Install the current XPI `nextcloud-enterprise-2.2.3.xpi` in Thunderbird (Add-ons > Gear > Install Add-on From File).
 2. Restart Thunderbird.
 3. In the add-on options, enter base URL, user, and app password or start the login flow.
 

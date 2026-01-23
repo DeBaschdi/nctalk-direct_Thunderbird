@@ -5,6 +5,12 @@
  */
 'use strict';
 (function(global){
+  /**
+   * Translate a message key using the WebExtension i18n catalog.
+   * @param {string} key
+   * @param {string[]|string} substitutions
+   * @returns {string}
+   */
   function translate(key, substitutions){
     try{
       if (global.browser?.i18n?.getMessage){

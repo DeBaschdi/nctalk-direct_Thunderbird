@@ -22,6 +22,11 @@ const NCCore = (() => {
     return String(input).trim().replace(/\/+$/, "");
   }
 
+  /**
+   * Ensure optional host permission exists for the given base URL.
+   * @param {string} baseUrl
+   * @returns {Promise<boolean>}
+   */
   async function ensureHostPermission(baseUrl){
     if (typeof NCHostPermissions === "undefined" || !NCHostPermissions?.hasOriginPermission){
       return true;
@@ -101,7 +106,12 @@ const NCCore = (() => {
         }
         if (!userRes.ok){
           const userRaw = await userRes.text().catch(() => "");
-          const userData = (() => { try{ return userRaw ? JSON.parse(userRaw) : null; }catch(_){ return null; }})();
+          let userData = null;
+          try{
+            userData = userRaw ? JSON.parse(userRaw) : null;
+          }catch(_){
+            userData = null;
+          }
           const detail = userData?.ocs?.meta?.message || userRaw || (userRes.status + " " + userRes.statusText);
           return { ok:false, code:"http", message: detail };
         }

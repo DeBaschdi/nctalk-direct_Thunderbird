@@ -2,7 +2,7 @@
     "manifest_version":  2,
     "default_locale":  "de",
     "name":  "__MSG_extName__",
-    "version":  "2.2.2",
+    "version":  "2.2.3",
     "description":  "__MSG_extDescription__",
     "developer":  {
                      "name":  "Bastian Kleinschmidt"
@@ -62,7 +62,116 @@
                                                                         ],
                                                               "script":  "experiments/calToolbar/parent.js"
                                                           }
-                                           }
+                                           },
+                            "calendar_calendars":  {
+                                                       "schema":  "experiments/calendar/schema/calendar-calendars.json",
+                                                       "parent":  {
+                                                                      "scopes":  [
+                                                                                     "addon_parent"
+                                                                                 ],
+                                                                      "script":  "experiments/calendar/parent/ext-calendar-calendars.js",
+                                                                      "paths":  [
+                                                                                    [
+                                                                                        "calendar",
+                                                                                        "calendars"
+                                                                                    ]
+                                                                                ]
+                                                                  }
+                                                   },
+                            "calendar_items":  {
+                                                  "schema":  "experiments/calendar/schema/calendar-items.json",
+                                                  "parent":  {
+                                                                 "scopes":  [
+                                                                                "addon_parent"
+                                                                            ],
+                                                                 "script":  "experiments/calendar/parent/ext-calendar-items.js",
+                                                                 "paths":  [
+                                                                               [
+                                                                                   "calendar",
+                                                                                   "items"
+                                                                               ]
+                                                                           ]
+                                                             }
+                                              },
+                            "calendar_provider":  {
+                                                     "schema":  "experiments/calendar/schema/calendar-provider.json",
+                                                     "parent":  {
+                                                                    "scopes":  [
+                                                                                   "addon_parent"
+                                                                               ],
+                                                                    "script":  "experiments/calendar/parent/ext-calendar-provider.js",
+                                                                    "events":  [
+                                                                                   "startup"
+                                                                               ],
+                                                                    "paths":  [
+                                                                                  [
+                                                                                      "calendar",
+                                                                                      "provider"
+                                                                                  ]
+                                                                              ]
+                                                                }
+                                                 },
+                            "calendar_timezones":  {
+                                                      "schema":  "experiments/calendar/schema/calendar-timezones.json",
+                                                      "parent":  {
+                                                                     "scopes":  [
+                                                                                    "addon_parent"
+                                                                                ],
+                                                                     "script":  "experiments/calendar/parent/ext-calendar-timezones.js",
+                                                                     "paths":  [
+                                                                                   [
+                                                                                       "calendar",
+                                                                                       "timezones"
+                                                                                   ]
+                                                                               ]
+                                                                 },
+                                                      "child":  {
+                                                                    "scopes":  [
+                                                                                   "addon_child"
+                                                                               ],
+                                                                    "script":  "experiments/calendar/child/ext-calendar-timezones.js",
+                                                                    "paths":  [
+                                                                                  [
+                                                                                      "calendar",
+                                                                                      "timezones"
+                                                                                  ]
+                                                                              ]
+                                                                }
+                                                  },
+                            "calendarItemAction":  {
+                                                      "schema":  "experiments/calendar/schema/calendarItemAction.json",
+                                                      "parent":  {
+                                                                     "scopes":  [
+                                                                                    "addon_parent"
+                                                                                ],
+                                                                     "script":  "experiments/calendar/parent/ext-calendarItemAction.js",
+                                                                     "events":  [
+                                                                                    "startup"
+                                                                                ],
+                                                                     "paths":  [
+                                                                                   [
+                                                                                       "calendarItemAction"
+                                                                                   ]
+                                                                               ]
+                                                                 }
+                                                  },
+                            "calendarItemDetails":  {
+                                                       "schema":  "experiments/calendar/schema/calendarItemDetails.json",
+                                                       "parent":  {
+                                                                      "scopes":  [
+                                                                                     "addon_parent"
+                                                                                 ],
+                                                                      "script":  "experiments/calendar/parent/ext-calendarItemDetails.js",
+                                                                      "events":  [
+                                                                                     "startup"
+                                                                                 ],
+                                                                      "paths":  [
+                                                                                    [
+                                                                                        "calendarItemDetails"
+                                                                                    ]
+                                                                                ]
+                                                                  }
+                                                   }
                         },
     "icons":  {
                   "48":  "icons/talk-48.png",

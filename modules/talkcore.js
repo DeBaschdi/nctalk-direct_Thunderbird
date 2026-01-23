@@ -11,6 +11,10 @@ async function getOpts(){
   return NCCore.getOpts();
 }
 
+/**
+ * Build a standard host-permission error.
+ * @returns {Error}
+ */
 function hostPermissionError(){
   if (typeof localizedError === "function"){
     return localizedError("error_host_permission_missing");
@@ -21,6 +25,11 @@ function hostPermissionError(){
   return new Error(fallback);
 }
 
+/**
+ * Ensure optional host permission exists for the given base URL.
+ * @param {string} baseUrl
+ * @returns {Promise<boolean>}
+ */
 async function ensureHostPermission(baseUrl){
   if (typeof NCHostPermissions === "undefined" || !NCHostPermissions?.hasOriginPermission){
     return true;
@@ -481,11 +490,21 @@ function parseSystemAddressbook(data){
 }
 
 
+/**
+ * Extract a MIME type from a data URL.
+ * @param {string} dataUrl
+ * @returns {string}
+ */
 function extractMimeFromDataUrl(dataUrl){
   const match = /^data:([^;,]+)[;,]?/i.exec(dataUrl);
   return match && match[1] ? match[1].toLowerCase() : "";
 }
 
+/**
+ * Build a photo data URL from a card photo payload.
+ * @param {{data?:string, value?:string, mime?:string}|string} photo
+ * @returns {string|null}
+ */
 function createPhotoDataUrl(photo){
   if (!photo) return null;
   const raw = String(photo.raw || "").trim();
@@ -662,6 +681,10 @@ async function buildRoomDescription(baseDescription, url, password){
   return parts.join("\n\n").trim();
 }
 
+/**
+ * Resolve the configured language override for event description blocks.
+ * @returns {Promise<string>}
+ */
 async function getEventDescriptionLang(){
   if (!browser?.storage?.local){
     return "default";
@@ -674,6 +697,13 @@ async function getEventDescriptionLang(){
   }
 }
 
+/**
+ * Translate event description strings for the given language.
+ * @param {string} lang
+ * @param {string} key
+ * @param {string[]|string} substitutions
+ * @returns {Promise<string>}
+ */
 async function descriptionI18n(lang, key, substitutions = []){
   if (typeof NCI18nOverride !== "undefined" && typeof NCI18nOverride.tInLang === "function"){
     const msg = await NCI18nOverride.tInLang(lang, key, substitutions);
@@ -697,6 +727,12 @@ async function descriptionI18n(lang, key, substitutions = []){
   return "";
 }
 
+/**
+ * Build the plain-text Talk description block for calendar events.
+ * @param {string} url
+ * @param {string} password
+ * @returns {Promise<string>}
+ */
 async function buildStandardTalkDescription(url, password){
   const lang = await getEventDescriptionLang();
   const heading = await descriptionI18n(lang, "ui_description_heading");

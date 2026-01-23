@@ -37,6 +37,13 @@ const DEFAULT_SHARING_BASE = (typeof NCSharing !== "undefined" ? NCSharing.DEFAU
 let statusTimer = null;
 const LANG_OPTIONS = new Set(["default", "en", "de", "fr"]);
 
+/**
+ * Show a transient status message in the options UI.
+ * @param {string} message
+ * @param {boolean} isError
+ * @param {boolean} sticky
+ * @param {boolean} isSuccess
+ */
 function showStatus(message, isError = false, sticky = false, isSuccess = false){
   if (statusTimer){
     clearTimeout(statusTimer);
@@ -52,6 +59,10 @@ function showStatus(message, isError = false, sticky = false, isSuccess = false)
   }
 }
 
+/**
+ * Load settings from storage and populate the options UI.
+ * @returns {Promise<void>}
+ */
 async function load(){
   if (NCSharingStorage?.migrateLegacySharingKeys){
     await NCSharingStorage.migrateLegacySharingKeys();
@@ -138,6 +149,11 @@ async function load(){
   updateAuthModeUI();
 }
 
+/**
+ * Request optional host permission for the configured base URL.
+ * @param {{allowPrompt?:boolean}} options
+ * @returns {Promise<boolean>}
+ */
 async function ensureOriginPermissionInteractive({ allowPrompt = true } = {}){
   const baseUrl = baseUrlInput?.value?.trim() || "";
   if (!baseUrl){
@@ -153,6 +169,11 @@ async function ensureOriginPermissionInteractive({ allowPrompt = true } = {}){
   return ok;
 }
 
+/**
+ * Open the Nextcloud login URL in the default browser or fallback popup.
+ * @param {string} url
+ * @returns {Promise<boolean>}
+ */
 async function openLoginUrl(url){
   if (!url){
     return false;
@@ -183,6 +204,10 @@ async function openLoginUrl(url){
   return false;
 }
 
+/**
+ * Persist options to storage and request host permission if needed.
+ * @returns {Promise<void>}
+ */
 async function save(){
   const baseUrl = baseUrlInput.value.trim();
   const user = userInput.value.trim();
@@ -265,9 +290,16 @@ load().catch((e) => {
   showStatus(e?.message || i18n("options_status_load_failed"), true);
 });
 
+/**
+ * Initialize the tab switcher on the options page.
+ */
 function initTabs(){
   const buttons = Array.from(document.querySelectorAll(".tab-btn"));
   const panels = Array.from(document.querySelectorAll(".tab-panel"));
+  /**
+   * Activate the selected tab and panel by id.
+   * @param {string} id
+   */
   const activate = (id) => {
     buttons.forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.tab === id);
@@ -281,6 +313,9 @@ function initTabs(){
   });
 }
 
+/**
+ * Fill the About section with version and license link.
+ */
 function initAbout(){
   const versionEl = document.getElementById("aboutVersion");
   try{
@@ -305,11 +340,19 @@ authRadios.forEach((radio) => {
   });
 });
 
+/**
+ * Read the selected auth mode radio value.
+ * @returns {string}
+ */
 function getSelectedAuthMode(){
   const checked = document.querySelector("input[name='authMode']:checked");
   return checked ? checked.value : "manual";
 }
 
+/**
+ * Select an auth mode radio button by value.
+ * @param {string} mode
+ */
 function setAuthMode(mode){
   const target = authRadios.find((radio) => radio.value === mode);
   if (target){
@@ -319,6 +362,9 @@ function setAuthMode(mode){
   }
 }
 
+/**
+ * Enable/disable fields based on the selected auth mode.
+ */
 function updateAuthModeUI(){
   const mode = getSelectedAuthMode();
   const manual = mode === "manual";
@@ -329,11 +375,19 @@ function updateAuthModeUI(){
   }
 }
 
+/**
+ * Read the selected default Talk room type.
+ * @returns {"normal"|"event"}
+ */
 function getSelectedTalkDefaultRoomType(){
   const checked = talkDefaultRoomTypeRadios.find((radio) => radio.checked);
   return checked?.value === "normal" ? "normal" : "event";
 }
 
+/**
+ * Apply the selected default Talk room type to the radio group.
+ * @param {string} value
+ */
 function setTalkDefaultRoomType(value){
   const normalized = value === "normal" ? "normal" : "event";
   talkDefaultRoomTypeRadios.forEach((radio) => {
@@ -341,6 +395,11 @@ function setTalkDefaultRoomType(value){
   });
 }
 
+/**
+ * Normalize a language selection to the supported list.
+ * @param {string} value
+ * @returns {"default"|"en"|"de"|"fr"}
+ */
 function normalizeLangChoice(value){
   const normalized = String(value || "default").toLowerCase();
   return LANG_OPTIONS.has(normalized) ? normalized : "default";
@@ -396,6 +455,11 @@ function normalizeLangChoice(value){
   });
 }
 
+/**
+ * Run a connection test against the configured Nextcloud instance.
+ * @param {{showMissing?:boolean}} options
+ * @returns {Promise<object>}
+ */
 async function runConnectionTest({ showMissing = true } = {}){
   const baseUrl = baseUrlInput.value.trim();
   const user = userInput.value.trim();
