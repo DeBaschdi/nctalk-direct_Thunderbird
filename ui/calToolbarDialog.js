@@ -20,8 +20,7 @@
   }
 
   const EVENT_DIALOG_URLS = [
-    "chrome://calendar/content/calendar-event-dialog.xhtml",
-    "chrome://calendar/content/calendar-event-dialog.xul"
+    "chrome://calendar/content/calendar-event-dialog.xhtml"
   ];
 
   const STATE = {
@@ -393,7 +392,7 @@
    */
   function talkIconURL(size = 20){
     try{
-      return API.getURL(`icons/talk-${size}.png`);
+      return API.getURL(`icons/app-${size}.png`);
     }catch(_){
       return null;
     }
@@ -589,3 +588,4 @@
   };
   window.NCTalkRegisterCleanup = requestCleanup;
 })();
+

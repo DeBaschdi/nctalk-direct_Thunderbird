@@ -1,6 +1,6 @@
 {
-  "extName": { "message": "Nextcloud Enterprise for Thunderbird" },
-  "extDescription": { "message": "Erstellt Nextcloud Talk Unterhaltungen direkt aus dem Termin-Dialog." },
+  "extName": { "message": "NC Connector for Thunderbird" },
+  "extDescription": { "message": "Integrates Thunderbird with Nextcloud Talk and Files" },
   "ui_button_ok": { "message": "OK" },
   "ui_button_cancel": { "message": "Abbrechen" },
   "ui_button_apply": { "message": "Übernehmen" },
@@ -133,8 +133,8 @@
   "error_participant_not_found": { "message": "Teilnehmer wurde nicht gefunden, bitte Schreibweise pruefen." },
   "error_users_load_failed": { "message": "Benutzer konnten nicht geladen werden." },
   "error_unknown_utility_request": { "message": "Unbekannte Utility-Anfrage." },
-  "options_title": { "message": "Nextcloud Enterprise for Thunderbird - Einstellungen" },
-  "options_heading": { "message": "Nextcloud Enterprise for Thunderbird - Einstellungen" },
+  "options_title": { "message": "NC Connector for Thunderbird - Einstellungen" },
+  "options_heading": { "message": "NC Connector for Thunderbird - Einstellungen" },
   "options_base_url_label": { "message": "Nextcloud URL" },
   "options_base_url_placeholder": { "message": "https://cloud.example.com" },
   "options_user_label": { "message": "Benutzername" },
@@ -203,7 +203,7 @@
   "options_talk_default_roomtype_event": { "message": "Event-Konversation" },
   "options_talk_default_roomtype_standard": { "message": "Standard-Raum" },
   "sharing_wizard_title": { "message": "Nextcloud-Freigabe" },
-  "sharing_header_hint": { "message": "Nextcloud Enterprise for Thunderbird" },
+  "sharing_header_hint": { "message": "NC Connector for Thunderbird" },
   "sharing_step_general": { "message": "Freigabe" },
   "sharing_share_name_label": { "message": "Freigabename" },
   "sharing_share_placeholder": { "message": "z. B. Projekt X" },
@@ -292,6 +292,7 @@
   "sharing_html_intro_line": { "message": "Ich möchte Dateien sicher und unter Wahrung Ihrer Privatsphäre mit Ihnen teilen. Klicken Sie auf den untenstehenden Link, um Ihre Dateien herunterzuladen." },
   "sharing_html_footer_line": { "message": "Nextcloud ist eine Lösung für sicheren E-Mail- und Datenaustausch." }
 }
+
 
 
 

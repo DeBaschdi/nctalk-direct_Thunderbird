@@ -7,13 +7,15 @@ See LICENSE.txt for details.
 <meta charset="utf-8">
 <title data-i18n="options_title">Nextcloud Talk - Einstellungen</title>
 <style>
-body{font:14px system-ui, sans-serif; max-width:760px; margin:20px auto; line-height:1.45;}
-.hero{background:#0078c6; border-radius:12px; padding:14px; margin-bottom:18px; display:flex; justify-content:center; align-items:center;}
-.hero img{height:48px;}
+:root{--brand-blue:#0082C9;--header-height:48px;}
+body{font:14px system-ui, sans-serif; max-width:760px; margin:20px auto; line-height:1.45; background:linear-gradient(180deg,#fafdff 0%,#eef2fb 100%); color:#1f1f1f;}
+
+.hero{border-radius:12px; margin-bottom:18px; display:flex; justify-content:center; align-items:center; overflow:hidden; height:var(--header-height); background:var(--brand-blue);}
+.hero img{width:auto; height:100%; max-width:328px; display:block; object-fit:contain;}
 .tabs{border:1px solid #d7d7d7; border-radius:10px; overflow:hidden;}
 .tab-list{display:flex; flex-wrap:wrap; border-bottom:1px solid #e1e1e1; background:#f7f8fa;}
 .tab-list button{flex:1 1 120px; padding:10px; border:none; background:none; cursor:pointer; font-weight:600;}
-.tab-list button.active{background:#ffffff; border-bottom:3px solid #1d73db;}
+.tab-list button.active{background:#ffffff; border-bottom:3px solid var(--brand-blue);}
 .tab-panel{display:none; padding:20px;}
 .tab-panel.active{display:block;}
 .row{display:grid; grid-template-columns: 200px 1fr; gap:10px; align-items:center; margin:10px 0;}
@@ -22,7 +24,7 @@ footer{display:flex; gap:8px; margin-top:16px}
 #status{opacity:.8; font-size:12px}
 .donation{display:flex; flex-direction:column; gap:8px; margin-top:12px;}
 .donation-link{display:inline-flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid #e0e0e0; border-radius:8px; text-decoration:none; color:inherit; background:#fafafa;}
-.donation-link:hover{background:#f0f7ff; border-color:#b7d7ff;}
+.donation-link:hover{background:#f0f7ff; border-color:var(--brand-blue);}
 .donation-link img{width:24px; height:24px;}
 .about-list{list-style:none; padding-left:0; margin:0;}
 .about-list li{margin-bottom:6px;}
@@ -32,13 +34,14 @@ footer{display:flex; gap:8px; margin-top:16px}
 .radio-option{display:flex; align-items:center; gap:8px; margin:6px 0;}
 .button-row{display:flex; flex-wrap:wrap; gap:10px; margin-top:12px;}
 #testConnection,#loginFlowButton{padding:8px 12px;}
+#save{padding:8px 14px; background:var(--brand-blue); border:1px solid var(--brand-blue); color:#fff; border-radius:6px;}
 .checklist{display:flex; flex-direction:column; gap:6px;}
 .checklist label{font-weight:400;}
 .hint{margin:6px 0 0 0; font-size:12px; color:#555;}
 </style>
 <h1 data-i18n="options_heading">Nextcloud Talk - Einstellungen</h1>
 <div class="hero">
-  <img src="logo-nextcloud-png-transparent.png" alt="Nextcloud">
+  <img src="ui/assets/header-solid-blue-328x96.png" alt="NC Connector">
 </div>
 <div class="tabs">
   <div class="tab-list" role="tablist">
@@ -190,3 +193,16 @@ footer{display:flex; gap:8px; margin-top:16px}
 <script src="modules/ncSharing.js"></script>
 <script src="ui/domI18n.js"></script>
 <script src="options.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+

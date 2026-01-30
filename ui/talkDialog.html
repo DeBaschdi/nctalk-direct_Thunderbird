@@ -8,7 +8,9 @@ See LICENSE.txt for details.
 <title data-i18n="talk_dialog_title">Nextcloud Talk</title>
 <style>
 :root{
-  --dialog-accent:#7a5bff;
+  --brand-blue:#0082C9;
+  --header-height:48px;
+  --dialog-accent:var(--brand-blue);
   --dialog-surface:#f4f6fd;
   --dialog-outline:#d7dbeb;
   --dialog-outline-strong:#c0c8e2;
@@ -16,7 +18,7 @@ See LICENSE.txt for details.
 }
 body{
   margin:0;
-  padding:20px 0 8px;
+  padding:0;
   font:14px 'Segoe UI',system-ui,sans-serif;
   background:linear-gradient(180deg,#fafdff 0%,#eef2fb 100%);
   color:var(--dialog-text);
@@ -24,6 +26,7 @@ body{
   box-sizing:border-box;
   display:flex;
   justify-content:center;
+  align-items:flex-start;
 }
 [hidden]{
   display:none !important;
@@ -41,13 +44,21 @@ body{
   overflow:hidden;
 }
 .dialog-hero{
-  background:#0078d4;
-  padding:14px 14px 12px;
+  background:var(--brand-blue);
+  padding:0;
   text-align:center;
+  height:var(--header-height);
+  overflow:hidden;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  align-items:flex-start;
 }
 .dialog-hero img{
-  height:40px;
+  width:auto; height:100%; max-width:328px; display:block; object-fit:contain;
+  margin:0 auto;
 }
+
 .dialog-content{
   padding:18px 28px 22px;
   display:flex;
@@ -80,7 +91,7 @@ body{
   border-color:var(--dialog-accent);
   background:#fff;
   outline:none;
-  box-shadow:0 0 0 3px rgba(122,91,255,0.15);
+  box-shadow:0 0 0 3px rgba(0,130,201,0.15);
 }
 .section input[type="text"]::placeholder{
   color:#8b90a5;
@@ -125,7 +136,7 @@ body{
   border-radius:12px;
   padding:12px 14px;
   background:#eef2ff;
-  border:1px solid rgba(122,91,255,0.25);
+  border:1px solid rgba(0,130,201,0.25);
   margin-top:8px;
 }
 .delegate-selected-description{
@@ -141,6 +152,7 @@ body{
   display:flex;
   align-items:center;
   justify-content:center;
+  align-items:flex-start;
   overflow:hidden;
   flex:0 0 40px;
   position:relative;
@@ -222,6 +234,7 @@ body{
   display:flex;
   align-items:center;
   justify-content:center;
+  align-items:flex-start;
   overflow:hidden;
   flex:0 0 32px;
   font-weight:600;
@@ -334,9 +347,9 @@ body{
   cursor:pointer;
 }
 .footer button.primary{
-  background:#0078d4;
+  background:var(--brand-blue);
   color:#fff;
-  border-color:#0078d4;
+  border-color:var(--brand-blue);
 }
 .message{
   min-height:0;
@@ -354,6 +367,7 @@ body{
   display:flex;
   align-items:center;
   justify-content:center;
+  align-items:flex-start;
   z-index:999;
 }
 .delegate-modal{
@@ -392,8 +406,8 @@ body{
   transition:background .15s ease,border-color .15s ease,color .15s ease;
 }
 .delegate-modal-actions button.primary{
-  border-color:#0078d4;
-  background:#0078d4;
+  border-color:var(--brand-blue);
+  background:var(--brand-blue);
   color:#fff;
 }
 .delegate-modal-actions button.secondary{
@@ -401,7 +415,7 @@ body{
 }
 .delegate-modal-actions button:focus{
   outline:none;
-  box-shadow:0 0 0 3px rgba(0,120,212,0.35);
+  box-shadow:0 0 0 3px rgba(0,130,201,0.35);
 }
 .delegate-modal-overlay[data-variant="error"] .delegate-modal-title{
   color:#b00020;
@@ -413,10 +427,10 @@ body{
 <body>
   <div class="dialog">
     <div class="dialog-hero">
-      <img src="../icons/talk-48.png" alt="Nextcloud Talk">
+      <img src="assets/header-solid-blue-328x96.png" alt="NC Connector">
     </div>
     <div class="dialog-content">
-      <div class="message" id="messageBar"></div>
+<div class="message" id="messageBar"></div>
       <div class="section">
         <label for="titleInput" data-i18n="ui_create_title_label">Titel</label>
         <input id="titleInput" type="text">
@@ -496,4 +510,20 @@ body{
   <script src="domI18n.js"></script>
   <script src="talkDialog.js"></script>
 </body>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

@@ -1,6 +1,6 @@
 {
-  "extName": { "message": "Nextcloud Enterprise for Thunderbird" },
-  "extDescription": { "message": "Create Nextcloud Talk conversations directly from Thunderbird's event dialog." },
+  "extName": { "message": "NC Connector for Thunderbird" },
+  "extDescription": { "message": "Integrates Thunderbird with Nextcloud Talk and Files" },
   "ui_button_ok": { "message": "OK" },
   "ui_button_cancel": { "message": "Cancel" },
   "ui_button_apply": { "message": "Apply" },
@@ -133,8 +133,8 @@
   "error_participant_not_found": { "message": "Participant not found, please check spelling." },
   "error_users_load_failed": { "message": "Could not load users." },
   "error_unknown_utility_request": { "message": "Unknown utility request." },
-  "options_title": { "message": "Nextcloud Enterprise for Thunderbird – Settings" },
-  "options_heading": { "message": "Nextcloud Enterprise for Thunderbird – Settings" },
+  "options_title": { "message": "NC Connector for Thunderbird – Settings" },
+  "options_heading": { "message": "NC Connector for Thunderbird – Settings" },
   "options_base_url_label": { "message": "Nextcloud URL" },
   "options_base_url_placeholder": { "message": "https://cloud.example.com" },
   "options_user_label": { "message": "Username" },
@@ -203,7 +203,7 @@
   "options_talk_default_roomtype_event": { "message": "Event conversation" },
   "options_talk_default_roomtype_standard": { "message": "Standard room" },
   "sharing_wizard_title": { "message": "Nextcloud Share" },
-  "sharing_header_hint": { "message": "Nextcloud Enterprise for Thunderbird" },
+  "sharing_header_hint": { "message": "NC Connector for Thunderbird" },
   "sharing_step_general": { "message": "Share" },
   "sharing_share_name_label": { "message": "Share name" },
   "sharing_share_placeholder": { "message": "e.g. Project X" },
@@ -292,6 +292,7 @@
   "sharing_html_intro_line": { "message": "I would like to share files securely and protect your privacy. Click the link below to download your files." },
   "sharing_html_footer_line": { "message": "Nextcloud is a solution for secure e-mail and data exchange." }
 }
+
 
 
 

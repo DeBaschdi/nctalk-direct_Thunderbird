@@ -7,6 +7,7 @@ See LICENSE.txt for details.
 <meta charset="utf-8">
 <title data-i18n="sharing_dialog_title">Nextcloud Freigabe</title>
 <style>
+:root{--brand-blue:#0082C9;--header-height:48px;}
 html,
 body{
   height:100%;
@@ -21,6 +22,7 @@ body{
   box-sizing:border-box;
   display:flex;
   justify-content:center;
+  align-items:flex-start;
 }
 .nc-dialog{
   width:100%;
@@ -38,13 +40,21 @@ body{
   min-height:0;
 }
 .nc-dialog-hero{
-  background:#0078d4;
-  padding:14px 14px 12px;
+  background:var(--brand-blue);
+  padding:0;
   text-align:center;
+  height:var(--header-height);
+  overflow:hidden;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  align-items:flex-start;
 }
 .nc-dialog-hero img{
-  height:40px;
+  width:auto; height:100%; max-width:328px; display:block; object-fit:contain;
+  margin:0 auto;
 }
+
 .dialog-message{
   min-height:0;
   padding:0 32px;
@@ -207,7 +217,7 @@ tbody tr.selected{
   display:block;
   height:100%;
   width:0;
-  background:#0078d4;
+  background:var(--brand-blue);
 }
 .status-text{
   font-size:12px;
@@ -231,8 +241,8 @@ tbody tr.selected{
   font-size:14px;
 }
 .nc-dialog-footer button.primary{
-  background:#0078d4;
-  border-color:#0078d4;
+  background:var(--brand-blue);
+  border-color:var(--brand-blue);
   color:#fff;
 }
 .nc-dialog-footer button:disabled{
@@ -248,11 +258,11 @@ tbody tr.selected{
 <body>
   <div class="nc-dialog">
     <div class="nc-dialog-hero">
-      <img src="../logo-nextcloud-png-transparent.png" alt="Nextcloud">
+      <img src="assets/header-solid-blue-328x96.png" alt="NC Connector">
     </div>
     <div class="dialog-message" id="messageBar"></div>
     <div class="nc-dialog-content">
-      <section class="wizard-step active" data-step="1">
+<section class="wizard-step active" data-step="1">
         <h2 data-i18n="sharing_heading_permissions">Freigabeeinstellungen</h2>
         <div class="form-row">
           <label for="shareName" data-i18n="sharing_share_name_label">Freigabename</label>
@@ -362,3 +372,19 @@ tbody tr.selected{
   <script src="password.js"></script>
   <script src="nextcloudSharingWizard.js"></script>
 </body>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

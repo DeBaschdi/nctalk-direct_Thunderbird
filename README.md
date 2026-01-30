@@ -1,75 +1,97 @@
-[Deutsch](README.md) | [English](README.en.md)
+[English](README.md) | [Deutsch](README.de.md)
 
-# Nextcloud Enterprise for Thunderbird 
+<div align="center" style="background:#0082C9; padding:1px 0;"><img src="ui/assets/header-solid-blue-1920x480.png" alt="Addon" height="80"></div>
 
-Nextcloud Enterprise for Thunderbird verbindet Ihr Thunderbird direkt mit Nextcloud Talk und der sicheren Nextcloud-Freigabe. Ein einziger Klick öffnet einen modernen Wizard, erstellt automatisch Talk-Räume inklusive Lobby und Moderatoren Delegation und fügt den Meeting-Link mitsamt Passwort sauber in den Termin ein. Aus dem Verfassen-Fenster heraus erzeugen Sie auf Wunsch sofort eine Nextcloud-Freigabe inklusive Upload-Ordner, Ablaufdatum, Passwort und personalisierter Nachricht. Keine Copy-&-Paste-Orgien mehr, keine offenen Links in Mails: alles läuft in Thunderbird, alles wird sauber in Ihrer Nextcloud abgelegt.
+##
+NC Connector for Thunderbird connects Thunderbird directly with Nextcloud Talk and secure Nextcloud sharing. One click opens a modern wizard, creates Talk rooms with lobby and moderator delegation, and inserts the meeting link (including password) into the event. From the compose window, you can generate a Nextcloud share with upload folder, expiration date, password, and personal message. No copy-paste juggling and no open links in emails: everything stays in Thunderbird and is stored cleanly in your Nextcloud.
+
+This is a community project and is not an official Nextcloud GmbH product.
 
 ## Highlights
 
-- **Ein Klick zu Nextcloud Talk** 
-Termin öffnen, Nextcloud Talk wählen, Raum konfigurieren, Moderator definieren. Der Wizard schreibt Titel/Ort/Beschreibung inklusive Hilfe-Link automatisch in den Termin.
-- **Sharing deluxe** 
-Compose-Button Nextcloud Freigabe hinzufügen startet den Freigabe-Assistenten mit Upload-Queue, Passwortgenerator, Ablaufdatum und Notizfeld. Die fertige Freigabe landet als formatiertes HTML direkt in der E-Mail.
-- **Enterprise-Sicherheit** 
-Lobby bis Startzeit, Moderator-Delegation, automatisches Aufräumen nicht gespeicherter Termine, Pflicht-Passwörter und Ablauffristen schützen sensible Meetings und Dateien.
-- **Nahtlose Nextcloud-Integration** 
-Login-Flow V2, automatische Raumverfolgung sowie Debug-Logs in [NCBG], [NCUI], [NCSHARE] helfen beim Troubleshooting.
-- **ESR-ready** 
-Optimiert und getestet für Thunderbird ESR 140.X mit minimalem Experiment-Anteil.
+- **One-click Nextcloud Talk**
+  Open an event, choose Nextcloud Talk, configure the room, and define a moderator. The wizard writes title/location/description (including help link) into the event.
+- **Sharing deluxe**
+  The "Add Nextcloud Share" button starts the sharing assistant with upload queue, password generator, expiration date, and note field. The finished share is inserted as formatted HTML into the email.
+- **Enterprise security**
+  Lobby until start time, moderator delegation, automatic cleanup of unsaved events, required passwords, and expiration policies protect sensitive meetings and files.
+- **Seamless Nextcloud integration**
+  Login Flow V2, automatic room tracking, and debug logs in [NCBG], [NCUI], [NCSHARE] help with troubleshooting.
+- **ESR-ready**
+  Optimized and tested for Thunderbird ESR 140.X with a minimal experiment footprint.
 
-## Was ist neu in 2.2.3?
+## Whats new in 2.2.4?
 
-- Neues Branding Nextcloud Enterprise for Thunderbird.
-- Freigabe-Wizard (Umbenennung und klare Abgrenzung zu cloudFile).
-- Optionale Host-Permissions pro Instanz + i18n Fix im Talk-Dialog.
-- Neue Default-Optionen fuer Freigabe und Talk (Share-Name, Rechte, Passwort/Ablauf-Tage, Talk-Titel/Lobby/Listbarkeit/Raumtyp).
-- Erweiterte Spracheinstellungen fuer Freigabe-HTML und Talk-Textblock (default/en/de/fr).
-- Hinweis: Die Add-on-ID wurde geaendert. Bitte Versionen <=2.2.1 deinstallieren, bevor 2.2.3 installiert wird.
+- Legal/branding update: renamed to NC Connector for Thunderbird with new app icon and headers.
+- Experiment quality cleanup for TB 140 (no XUL dialog includes, no window tracking maps, shared utils loaded only in the dialog window).
+- Note: The add-on ID has changed in 2.2.2. Please uninstall versions <=2.2.1 before installing 2.2.4.
 
-## Funktionsüberblick
+## Feature overview
 
-### Nextcloud Talk direkt aus dem Termin
-- Talk-Popup mit Lobby, Passwort, Listbarkeit, Raumtyp und Moderatorensuche.
-- Automatische Einträge von Titel, Ort, Beschreibung (inkl. Hilfe-Link und Passwort) in das Terminfenster.
-- Room-Tracking, Lobby-Updates, Delegations-Workflow und Cleanup, falls der Termin verworfen oder verschoben wird.
-- Kalender-Aenderungen (Drag-and-drop oder Dialog-Edit) halten Lobby/Startzeit des Talk-Raums synchron.
+### Nextcloud Talk directly from the event
+- Talk popup with lobby, password, listable option, room type, and moderator search.
+- Automatic insertion of title, location, and description (including help link and password) into the event.
+- Room tracking, lobby updates, delegation workflow, and cleanup if the event is discarded or moved.
+- Calendar changes (drag-and-drop or dialog edits) keep lobby/start time in sync on the server.
 
-### Nextcloud Sharing im Compose-Fenster
-- Vier Schritte (Freigabe, Ablaufdatum, Dateien, Notiz) mit passwortgeschütztem Upload-Ordner.
-- Upload-Queue mit Duplikatprüfung, Fortschrittsanzeige und optionaler Freigabe.
-- Automatische HTML-Bausteine mit Link, Passwort, Ablaufdatum und optionaler Notiz.
+### Nextcloud Sharing in the compose window
+- Four steps (share, expiration date, files, note) with a password-protected upload folder.
+- Upload queue with duplicate checks, progress display, and optional share without upload.
+- Automatic HTML blocks with link, password, expiration date, and optional note.
 
-### Administration & Compliance
-- Login Flow V2 (App-Passwort wird automatisch angelegt) und zentrale Optionen (Basis-URL, Debug-Modus, Freigabe-Pfade, Defaultwerte fuer Freigabe/Talk).
-- Vollständige Internationalisierung (DE/EN/FR) und strukturierte Debug-Logs für Support-Fälle.
+### Administration & compliance
+- Login Flow V2 (app password is created automatically) and central options (base URL, debug mode, sharing paths, default values for Sharing/Talk).
+- Full internationalization (DE/EN/FR) and structured debug logs for support cases.
 
-## Systemvoraussetzungen
+## System requirements
 - Thunderbird ESR 140.X (Windows/macOS/Linux)
-- Nextcloud mit Talk & Freigabe (DAV) aktiviert
-- App-Passwort oder Login Flow V2
+- Nextcloud with Talk & Sharing (DAV) enabled
+- App password or Login Flow V2
 
 ## Installation
-1. Aktuelle XPI 
-nextcloud-enterprise-2.2.3.xpi in Thunderbird installieren (Add-ons ? Zahnrad ? Add-on aus Datei installieren).
-2. Thunderbird neu starten.
-3. In den Add-on-Optionen Basis-URL, Benutzer und App-Passwort hinterlegen oder den Login Flow starten.
+1. Install the current XPI `nc4tb-2.2.4.xpi` in Thunderbird (Add-ons > Gear > Install Add-on From File).
+2. Restart Thunderbird.
+3. In the add-on options, enter base URL, user, and app password or start the login flow.
 
-## Support & Feedback
-- **Fehleranalyse:** Debug-Modus in den Optionen aktivieren; relevante Logs erscheinen als [NCUI][Talk], [NCUI][Sharing], [NCBG], [NCSHARE], [NCExp].
+## Support & feedback
+- **Troubleshooting:** Enable debug mode in the options; relevant logs appear as [NCUI][Talk], [NCUI][Sharing], [NCBG], [NCSHARE], [NCExp].
 
-Viel Erfolg beim sicheren, professionellen Arbeiten mit Nextcloud Enterprise for Thunderbird!
+Good luck with secure, professional work using NC Connector for Thunderbird!
 
 ## Screenshots
 
-### Settings-Menü
-![Settings-Menü](screenshots/Settings.png)
+<details>
+<summary><strong>Settings menu</strong></summary>
 
-### Talk Wizard
-![Talk Wizard](screenshots/talk_wizzard.png)
+| <a href="screenshots/Settings.png"><img src="screenshots/Settings.png" alt="Settings menu" width="230"></a> |
+| --- |
 
-### Sharing Wizard
-![Sharing Wizard Schritt 1](screenshots/filelink_wizzard1.png)
-![Sharing Wizard Schritt 2](screenshots/filelink_wizzard2.png)
-![Sharing Wizard Schritt 3](screenshots/filelink_wizzard3.png)
-![Sharing Wizard Schritt 4](screenshots/filelink_wizzard4.png)
-![Sharing Wizard Schritt 5](screenshots/filelink_wizzard5.png)
+</details>
+
+<details>
+<summary><strong>Talk wizard</strong></summary>
+
+| <a href="screenshots/talk_wizzard1.png"><img src="screenshots/talk_wizzard1.png" alt="Talk wizard" width="230"></a> | <a href="screenshots/talk_wizzard2.png"><img src="screenshots/talk_wizzard2.png" alt="Talk wizard step 2" width="230"></a> |
+| --- | --- |
+
+</details>
+
+<details>
+<summary><strong>Sharing wizard</strong></summary>
+
+| <a href="screenshots/filelink_wizzard1.png"><img src="screenshots/filelink_wizzard1.png" alt="Sharing wizard step 1" width="230"></a> | <a href="screenshots/filelink_wizzard2.png"><img src="screenshots/filelink_wizzard2.png" alt="Sharing wizard step 2" width="230"></a> |
+| --- | --- |
+| <a href="screenshots/filelink_wizzard3.png"><img src="screenshots/filelink_wizzard3.png" alt="Sharing wizard step 3" width="230"></a> | <a href="screenshots/filelink_wizzard4.png"><img src="screenshots/filelink_wizzard4.png" alt="Sharing wizard step 4" width="230"></a> |
+| --- | --- |
+| <a href="screenshots/filelink_wizzard5.png"><img src="screenshots/filelink_wizzard5.png" alt="Sharing wizard step 5" width="230"></a> |  |
+| --- | --- |
+
+</details>
+
+
+
+
+
+
+
+

@@ -2,7 +2,7 @@
     "manifest_version":  2,
     "default_locale":  "de",
     "name":  "__MSG_extName__",
-    "version":  "2.2.3",
+    "version":  "2.2.4",
     "description":  "__MSG_extDescription__",
     "developer":  {
                      "name":  "Bastian Kleinschmidt"
@@ -39,8 +39,8 @@
     "compose_action":  {
                           "default_title":  "__MSG_compose_sharing_title__",
                           "default_icon":  {
-                                               "16":  "icons/nextcloud-16.png",
-                                               "32":  "icons/nextcloud-32.png"
+                                               "16":  "icons/app-16.png",
+                                               "32":  "icons/app-32.png"
                                            }
                       },
     "options_ui":  {
@@ -174,7 +174,11 @@
                                                    }
                         },
     "icons":  {
-                  "48":  "icons/talk-48.png",
-                  "96":  "icons/talk-96.png"
+                  "16":  "icons/app-16.png",
+                  "32":  "icons/app-32.png",
+                  "48":  "icons/app-48.png",
+                  "96":  "icons/app-96.png"
               }
 }
+
+

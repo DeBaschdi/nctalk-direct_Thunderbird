@@ -173,28 +173,21 @@
   function findDescriptionFieldInDocs(docs){
     for (const doc of docs){
       try{
+        // TB 140: #item-description is the dedicated identifier. If changed in future TB, add a second selector and annotate the TB version.
         const host = doc.querySelector && doc.querySelector("editor#item-description");
         let target = null;
         if (host){
           target = host.inputField || host.contentDocument?.body || host;
         }
         if (!target){
-          const fallbacks = [
-            "textarea#item-description",
-            "textarea",
-            "[contenteditable='true']",
-            "div[role='textbox']"
-          ];
-          for (const sel of fallbacks){
-            const el = doc.querySelector && doc.querySelector(sel);
-            if (el){
-              target = el;
-              break;
-            }
+          // Future fallback (only if needed): "textarea#item-description"
+          const fallback = doc.querySelector && doc.querySelector("textarea#item-description");
+          if (fallback){
+            target = fallback;
           }
         }
         if (target) return target;
-      }catch(_){}
+      }catch(_){ }
     }
     return null;
   }
@@ -401,11 +394,16 @@
    * @returns {{ok:boolean,error?:string}}
    */
   function setTalkMetadataOnWindow(target, payload = {}){
-    const doc = resolveDocument(target);
+    let doc = resolveDocument(target);
+    let meta = payload;
+    if (!doc){
+      meta = target || {};
+      doc = resolveDocument(globalScope);
+    }
     if (!doc){
       return { ok:false, error:"no_document" };
     }
-    return writeTalkMetadataToDocument(doc, payload);
+    return writeTalkMetadataToDocument(doc, meta);
   }
 
   /**
@@ -415,25 +413,22 @@
    * @returns {object}
    */
   function getEventSnapshotFromWindow(target, options = {}){
-    const doc = resolveDocument(target);
+    let doc = resolveDocument(target);
+    let opts = options;
+    if (!doc){
+      opts = target || {};
+      doc = resolveDocument(globalScope);
+    }
     if (!doc){
       return { ok:false, error:"no_document" };
     }
-    const metadata = options.metadata
-      || (typeof options.readMetadata === "function" ? options.readMetadata(doc) : readTalkMetadataFromDocument(doc));
+    const metadata = opts.metadata
+      || (typeof opts.readMetadata === "function" ? opts.readMetadata(doc) : readTalkMetadataFromDocument(doc));
     const docs = collectEventDocs(doc);
-    const titleField = findField(docs, [
-      "#item-title",
-      'input[id^="event-grid-title"]',
-      'input[type="text"]'
-    ]);
-    const locationField = findField(docs, [
-      'input[aria-label="Ort"]',
-      'input[placeholder="Ort"]',
-      "input#item-location",
-      'input[name="location"]',
-      'textbox[id*="location"]'
-    ]);
+    // TB 140: #item-title is the dedicated identifier. If changed in future TB, add a second selector and annotate the TB version.
+    const titleField = findField(docs, ["#item-title"]);
+    // TB 140: #item-location is the dedicated identifier. If changed in future TB, add a second selector and annotate the TB version.
+    const locationField = findField(docs, ["#item-location"]);
     const descField = findDescriptionFieldInDocs(docs);
     const event = {
       title: getFieldValue(titleField) || metadata?.title || "",
@@ -453,44 +448,43 @@
    * @returns {object}
    */
   function applyEventFieldsOnWindow(target, payload = {}, options = {}){
-    const doc = resolveDocument(target);
+    let doc = resolveDocument(target);
+    let fields = payload;
+    let opts = options;
+    if (!doc){
+      doc = resolveDocument(globalScope);
+      fields = target || {};
+      opts = payload || {};
+    }
     if (!doc){
       return { ok:false, error:"no_document" };
     }
-    const hasFieldOptions = options
-      && !options.titleOptions
-      && !options.locationOptions
-      && !options.descriptionOptions
-      && !options.preferExecForDescription;
-    const baseOptions = hasFieldOptions ? options : null;
-    const titleOptions = options.titleOptions || baseOptions || {};
-    const locationOptions = options.locationOptions || baseOptions || {};
-    let descriptionOptions = options.descriptionOptions || baseOptions || {};
-    if (options.preferExecForDescription === true && !options.descriptionOptions){
+    const hasFieldOptions = opts
+      && !opts.titleOptions
+      && !opts.locationOptions
+      && !opts.descriptionOptions
+      && !opts.preferExecForDescription;
+    const baseOptions = hasFieldOptions ? opts : null;
+    const titleOptions = opts.titleOptions || baseOptions || {};
+    const locationOptions = opts.locationOptions || baseOptions || {};
+    let descriptionOptions = opts.descriptionOptions || baseOptions || {};
+    if (opts.preferExecForDescription === true && !opts.descriptionOptions){
       descriptionOptions = Object.assign({}, descriptionOptions, { preferExec:true });
     }
     const docs = collectEventDocs(doc);
-    const titleField = findField(docs, [
-      "#item-title",
-      'input[id^="event-grid-title"]',
-      'input[type="text"]'
-    ]);
-    const locationField = findField(docs, [
-      'input[aria-label="Ort"]',
-      'input[placeholder="Ort"]',
-      "input#item-location",
-      'input[name="location"]',
-      'textbox[id*="location"]'
-    ]);
+    // TB 140: #item-title is the dedicated identifier. If changed in future TB, add a second selector and annotate the TB version.
+    const titleField = findField(docs, ["#item-title"]);
+    // TB 140: #item-location is the dedicated identifier. If changed in future TB, add a second selector and annotate the TB version.
+    const locationField = findField(docs, ["#item-location"]);
     const descField = findDescriptionFieldInDocs(docs);
-    if (typeof payload.title === "string" && titleField){
-      setFieldValue(titleField, payload.title, titleOptions);
+    if (typeof fields.title === "string" && titleField){
+      setFieldValue(titleField, fields.title, titleOptions);
     }
-    if (typeof payload.location === "string" && locationField){
-      setFieldValue(locationField, payload.location, locationOptions);
+    if (typeof fields.location === "string" && locationField){
+      setFieldValue(locationField, fields.location, locationOptions);
     }
-    if (typeof payload.description === "string" && descField){
-      setFieldValue(descField, payload.description, descriptionOptions);
+    if (typeof fields.description === "string" && descField){
+      setFieldValue(descField, fields.description, descriptionOptions);
     }
     return {
       ok:true,
@@ -520,3 +514,4 @@
     applyEventFieldsOnWindow
   };
 })();
+

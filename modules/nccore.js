@@ -10,7 +10,7 @@
  * Runs in the same context as talkcore/background.
  */
 const NCCore = (() => {
-  const DEVICE_NAME = "Nextcloud Enterprise for Thunderbird";
+  const DEVICE_NAME = "NC Connector for Thunderbird";
 
   /**
    * Normalize a base URL (trim and remove trailing slashes).
@@ -268,3 +268,4 @@ const NCCore = (() => {
     getOpts
   };
 })();
+

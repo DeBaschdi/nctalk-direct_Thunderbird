@@ -6,7 +6,7 @@
 'use strict';
 (function(__context){
   const DEFAULT_BASE_PATH = "90 Freigaben - extern";
-  const NEXTCLOUD_DEVICE_NAME = "Nextcloud Enterprise for Thunderbird";
+  const NEXTCLOUD_DEVICE_NAME = "NC Connector for Thunderbird";
   const PERMISSION_FLAGS = {
     read: 1,
     write: 2,
@@ -14,7 +14,7 @@
     delete: 8
   };
   const INVALID_PATH_CHARS = /[\\/:*?"<>|]/g;
-  let cachedLogoBase64 = null;
+  let cachedHeaderBase64 = null;
 
   /**
    * Debug logger scoped to the sharing module.
@@ -473,25 +473,70 @@
   }
 
   /**
-   * Load and cache the Nextcloud logo as base64 for HTML insertion.
-   * @returns {Promise<string>}
+   * Convert an ArrayBuffer to a base64 string.
+   * @param {ArrayBuffer} buffer
+   * @returns {string}
    */
-  async function getLogoBase64(){
-    if (cachedLogoBase64){
-      return cachedLogoBase64;
-    }
-    if (typeof browser === "undefined" || !browser?.runtime?.getURL){
-      return "";
-    }
-    const response = await fetch(browser.runtime.getURL("logo-nextcloud-filelink.png"));
-    const buffer = await response.arrayBuffer();
+  function bufferToBase64(buffer){
     let binary = "";
     const bytes = new Uint8Array(buffer);
     for (let i = 0; i < bytes.byteLength; i++){
       binary += String.fromCharCode(bytes[i]);
     }
-    cachedLogoBase64 = btoa(binary);
-    return cachedLogoBase64;
+    return btoa(binary);
+  }
+
+  /**
+   * Load a packaged asset and return a base64 payload.
+   * Falls back to XHR if fetch is blocked.
+   * @param {string} assetPath
+   * @returns {Promise<string>}
+   */
+  async function loadAssetBase64(assetPath){
+    if (typeof browser === "undefined" || !browser?.runtime?.getURL){
+      return "";
+    }
+    const url = browser.runtime.getURL(assetPath);
+    try{
+      const response = await fetch(url);
+      if (!response.ok){
+        throw new Error(`Asset fetch failed (${response.status})`);
+      }
+      return bufferToBase64(await response.arrayBuffer());
+    }catch(err){
+      try{
+        const buffer = await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("GET", url, true);
+          xhr.responseType = "arraybuffer";
+          xhr.onload = () => {
+            if (xhr.status === 200 || xhr.status === 0){
+              resolve(xhr.response);
+            }else{
+              reject(new Error(`Asset XHR failed (${xhr.status})`));
+            }
+          };
+          xhr.onerror = () => reject(new Error("Asset XHR failed"));
+          xhr.send();
+        });
+        return bufferToBase64(buffer);
+      }catch(err2){
+        console.warn("[NCSHARE] asset base64 failed", assetPath, err2?.message || err2);
+        return "";
+      }
+    }
+  }
+
+  /**
+   * Load and cache the header image as base64 for HTML insertion.
+   * @returns {Promise<string>}
+   */
+  async function getHeaderBase64(){
+    if (cachedHeaderBase64){
+      return cachedHeaderBase64;
+    }
+    cachedHeaderBase64 = await loadAssetBase64("ui/assets/header-solid-blue-164x48.png");
+    return cachedHeaderBase64;
   }
 
   /**
@@ -556,7 +601,7 @@
    */
   async function buildHtmlBlock(result, request){
     const shareLang = await getShareBlockLang();
-    const logo = await getLogoBase64();
+    const headerImage = await getHeaderBase64();
     const paragraphs = [];
     if (request?.noteEnabled && request?.note){
       paragraphs.push(`<p style="margin:0 0 14px 0;line-height:1.4;">${escapeHtml(request.note)}</p>`);
@@ -565,7 +610,7 @@
     if (introLine){
       paragraphs.push(`<p style="margin:0 0 14px 0;line-height:1.4;">${escapeHtml(introLine)}<br /></p>`);
     }
-    const downloadLink = `<a href="${escapeHtml(result.shareUrl)}" style="color:#0067c0;text-decoration:none;">${escapeHtml(result.shareUrl)}</a>`;
+    const downloadLink = `<a href="${escapeHtml(result.shareUrl)}" style="color:#0082C9;text-decoration:none;">${escapeHtml(result.shareUrl)}</a>`;
     const permissionLabels = {
       read: await tShare(shareLang, "sharing_permission_read"),
       create: await tShare(shareLang, "sharing_permission_create"),
@@ -582,20 +627,22 @@
       rows.push(buildTableRow(await tShare(shareLang, "sharing_html_expire_label"), escapeHtml(result.expireDate)));
     }
     rows.push(buildTableRow(await tShare(shareLang, "sharing_html_permissions_label"), buildPermissionsBadges(result.permissions, permissionLabels)));
-    const nextcloudAnchor = `<a href="https://nextcloud.com/" style="color:#0067c0;text-decoration:none;">Nextcloud</a>`;
+    const nextcloudAnchor = `<a href="https://nextcloud.com/" style="color:#0082C9;text-decoration:none;">Nextcloud</a>`;
     const footer = (await tShare(shareLang, "sharing_html_footer", [nextcloudAnchor])) || "";
     return `
 <div style="font-family:Calibri,'Segoe UI',Arial,sans-serif;font-size:11pt;color:#1f1f1f;margin:16px 0;">
   <table role="presentation" width="640" style="border-collapse:collapse;width:640px;margin:0;background-color:transparent;">
     <tr>
       <td style="padding:0;">
-        <table role="presentation" width="640" style="border-collapse:collapse;width:640px;background-color:#0078d4;height:54px;">
+        <table role="presentation" width="640" style="border-collapse:collapse;width:640px;margin:0;background-color:transparent;">
           <tr>
-            <td style="text-align:center;vertical-align:middle;padding:0;background-color:#0078d4;">
-              <img alt="Nextcloud" style="height:30px;width:auto;display:inline-block;" height="30" src="data:image/png;base64,${logo}" />
+            <td style="padding:0;background-color:#0082C9;text-align:center;height:32px;">
+              <a href="https://github.com/DeBaschdi/NC_Connector_for_Thunderbird/" style="display:inline-block;text-decoration:none;" target="_blank" rel="noopener">
+                <img alt="NC Connector" style="display:block;width:auto;height:32px;max-width:164px;object-fit:contain;border:0;margin:0 auto;" src="data:image/png;base64,${headerImage}" />
+              </a>
             </td>
           </tr>
-        </table>
+          </table>
         <div style="padding:18px 0 12px 0;">
           ${paragraphs.join("\n")}
           <table style="width:100%;border-collapse:collapse;margin-bottom:10px;">
@@ -642,7 +689,7 @@
       { label: labels.delete || i18n("sharing_permission_delete"), enabled: !!safePerms.delete }
     ];
     const cells = entries.map((entry) => {
-      const color = entry.enabled ? "#0078d4" : "#c62828";
+      const color = entry.enabled ? "#0082C9" : "#c62828";
       return `<td style="padding:0 18px 6px 0;">
         <span style="display:inline-flex;align-items:center;">
           <span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border:1px solid ${color};color:${color};font-size:13px;font-weight:700;">
@@ -767,7 +814,16 @@
       shareId: share.id || "",
       label: normalizedShareName
     };
-    const html = await buildHtmlBlock(resultPayload, request);
+    let html = "";
+    try{
+      html = await buildHtmlBlock(resultPayload, request);
+    }catch(err){
+      console.warn("[NCSHARE] buildHtmlBlock failed", err?.message || err);
+      const safeUrl = escapeHtml(share.url || "");
+      html = safeUrl
+        ? `<p style="margin:0 0 12px 0;"><a href="${safeUrl}" style="color:#0082C9;text-decoration:none;">${safeUrl}</a></p>`
+        : "";
+    }
     logDebug(opts, "createFileLink:done", { shareUrl: share.url });
 
     return {
@@ -862,4 +918,35 @@
     __context.NCSharing = api;
   }
 })(typeof window !== "undefined" ? window : (typeof globalThis !== "undefined" ? globalThis : this));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
